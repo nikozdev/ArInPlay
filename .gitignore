@@ -1,0 +1,5 @@
+gen/
+# binary
+rsc/
+# system
+*.DS_Store
