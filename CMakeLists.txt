@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.3...3.8)
 
 # proj
 
-project(ArInPlay
+set(vNameOfProj "ArInPlay")
+
+project(${vNameOfProj}
     VERSION 0.0.1
     DESCRIPTION "artifical intelligence playground"
     ) # project
@@ -12,6 +14,11 @@ project(ArInPlay
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+
+# file
+
+set(vPathToInternal "${CMAKE_SOURCE_DIR}")
+set(vPathToResource "${vPathToInternal}/res")
 
 # make
 
@@ -35,18 +42,24 @@ endif(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 
 # exec
 
-set(vExecName "${PROJECT_NAME}")
-set(vExecPath "${CMAKE_BINARY_DIR}/${vExecName}")
-add_executable(${vExecName} ./Main.cxx)
+set(vNameOfExec ${vNameOfProj})
+set(vPathToExec ${CMAKE_BINARY_DIR}/${vNameOfExec})
+
+add_executable(${vNameOfExec} ./Main.cxx)
+target_compile_definitions(${vNameOfExec} PRIVATE
+    dNameOfProj="${vNameOfExec}"
+    dPathToInternal="${vPathToInternal}"
+    dPathToResource="${vPathToResource}"
+    ) # target_compile_definitions
 
 # libs
 
 find_package(fmt REQUIRED)
-target_link_libraries(${vExecName} PRIVATE fmt::fmt)
+target_link_libraries(${vNameOfExec} PRIVATE fmt::fmt)
 mark_as_advanced(FORCE fmt_DIR)
 
 find_package(Boost COMPONENTS filesystem REQUIRED)
-target_link_libraries(${vExecName} PRIVATE
+target_link_libraries(${vNameOfExec} PRIVATE
     Boost::filesystem
     ) # link Boost
 mark_as_advanced(FORCE Boost_FILESYSTEM_LIBRARY_RELEA)
@@ -54,20 +67,55 @@ mark_as_advanced(FORCE Boost_INCLUDE_DIR)
 mark_as_advanced(FORCE Boost_DIR)
 
 find_package(SFML COMPONENTS system window graphics audio REQUIRED)
-target_link_libraries(${vExecName} PRIVATE sfml-graphics)
+target_link_libraries(${vNameOfExec} PRIVATE sfml-graphics)
+mark_as_advanced(FORCE SFML_DOC_DIR)
+mark_as_advanced(FORCE SFML_DIR)
 
 # test
 
 include(CTest)
 enable_testing()
 
-set(vTestName "tFdirPathMain")
-add_test(NAME ${vTestName}
-    COMMAND ${vExecPath} ${vTestName}
+function(fFilterOfText vText)
+    string(REPLACE "[" "\\[" ${vText} ${${vText}})
+    string(REPLACE "]" "\\]" ${vText} ${${vText}})
+    string(REPLACE "(" "\\(" ${vText} ${${vText}})
+    string(REPLACE ")" "\\)" ${vText} ${${vText}})
+    string(REPLACE "{" "\\{" ${vText} ${${vText}})
+    string(REPLACE "}" "\\}" ${vText} ${${vText}})
+    set(${vText} ${${vText}} PARENT_SCOPE)
+endfunction(fFilterOfText)
+
+set(vNameOfTest "tFileSystem")
+add_test(NAME ${vNameOfTest}
+    COMMAND ${vPathToExec} ${vNameOfTest}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ) # add_test
-set_tests_properties(${vTestName} PROPERTIES PASS_REGULAR_EXPRESSION
-    "\\[${vTestName}\\]=\\(${CMAKE_SOURCE_DIR}\\)"
+set(vTextOfTest "")
+string(APPEND vTextOfTest ".+[${vNameOfTest}]=(\n")
+string(APPEND vTextOfTest ".+[dPathToInternal]=(${vPathToInternal})\n")
+#string(APPEND vTextOfTest ".+[${vPathToInternal}]=(1)\n")
+string(APPEND vTextOfTest ".+[dPathToResource]=(${vPathToResource})\n")
+#string(APPEND vTextOfTest ".+[${vPathToResource}]=(1)\n")
+string(APPEND vTextOfTest ".+)=[${vNameOfTest}]\n")
+fFilterOfText(vTextOfTest)
+set_tests_properties(${vNameOfTest} PROPERTIES
+    PASS_REGULAR_EXPRESSION ${vTextOfTest}
+    ) # set_tests_properties
+
+set(vNameOfTest "tTextFormat")
+add_test(NAME ${vNameOfTest}
+    COMMAND ${vPathToExec} ${vNameOfTest}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ) # add_test
+set(vTextOfTest "")
+string(APPEND vTextOfTest ".+[${vNameOfTest}]=(\n")
+string(APPEND vTextOfTest ".+[.+(\"{:.2f}\", M_PI)]=(3.14))\n")
+string(APPEND vTextOfTest ".+[.+(\"{:.02f}\", M_PI)]=(3.14))\n")
+string(APPEND vTextOfTest ".+)=[${vNameOfTest}]\n")
+fFilterOfText(vTextOfTest)
+set_tests_properties(${vNameOfTest} PROPERTIES
+    PASS_REGULAR_EXPRESSION ${vTextOfTest}
     ) # set_tests_properties
 
 # hide
