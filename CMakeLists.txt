@@ -45,17 +45,24 @@ find_package(fmt REQUIRED)
 target_link_libraries(${vExecName} fmt::fmt)
 mark_as_advanced(FORCE fmt_DIR)
 
+find_package(Boost REQUIRED COMPONENTS filesystem)
+target_link_libraries(${vExecName} Boost::filesystem)
+mark_as_advanced(FORCE Boost_FILESYSTEM_LIBRARY_RELEA)
+mark_as_advanced(FORCE Boost_INCLUDE_DIR)
+mark_as_advanced(FORCE Boost_DIR)
+
 # test
 
 include(CTest)
 enable_testing()
 
-set(vTestName "tHello")
+set(vTestName "tFdirPathMain")
 add_test(NAME ${vTestName}
-    COMMAND ${vExecPath}
+    COMMAND ${vExecPath} ${vTestName}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ) # add_test
 set_tests_properties(${vTestName} PROPERTIES PASS_REGULAR_EXPRESSION
-    "HelloError"
+    "\\[${vTestName}\\]=\\(${CMAKE_SOURCE_DIR}\\)"
     ) # set_tests_properties
 
 # hide
