@@ -42,14 +42,19 @@ add_executable(${vExecName} ./Main.cxx)
 # libs
 
 find_package(fmt REQUIRED)
-target_link_libraries(${vExecName} fmt::fmt)
+target_link_libraries(${vExecName} PRIVATE fmt::fmt)
 mark_as_advanced(FORCE fmt_DIR)
 
-find_package(Boost REQUIRED COMPONENTS filesystem)
-target_link_libraries(${vExecName} Boost::filesystem)
+find_package(Boost COMPONENTS filesystem REQUIRED)
+target_link_libraries(${vExecName} PRIVATE
+    Boost::filesystem
+    ) # link Boost
 mark_as_advanced(FORCE Boost_FILESYSTEM_LIBRARY_RELEA)
 mark_as_advanced(FORCE Boost_INCLUDE_DIR)
 mark_as_advanced(FORCE Boost_DIR)
+
+find_package(SFML COMPONENTS system window graphics audio REQUIRED)
+target_link_libraries(${vExecName} PRIVATE sfml-graphics)
 
 # test
 
