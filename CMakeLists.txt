@@ -15,26 +15,35 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 # make
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS "ON" CACHE
+if(NOT CMAKE_EXPORT_COMPILE_COMMANDS)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE
     STRING "generate \"compile_commands.json\" file for coding tools"
     FORCE) # CMAKE_EXPORT_COMPILE_COMMANDS
+    set_property(CACHE CMAKE_EXPORT_COMPILE_COMMANDS
+        PROPERTY STRINGS ON OFF
+        ) # CMAKE_CONFIGURATION_TYPES
+endif(NOT CMAKE_EXPORT_COMPILE_COMMANDS)
 
-if(NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Debug" CACHE
         STRING "choose the type of build"
         FORCE) # CMAKE_BUILD_TYPE
-endif(NOT CMAKE_BUILD_TYPE)
-if(NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE
         PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo"
         ) # CMAKE_CONFIGURATION_TYPES
-endif(NOT CMAKE_CONFIGURATION_TYPES)
+endif(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 
-set(vMainName "${PROJECT_NAME}")
-set(vMainFile "${CMAKE_BINARY_DIR}/${vMainName}")
-add_executable(${vMainName} ./Main.cxx)
+# exec
 
-# libs (TODO)
+set(vExecName "${PROJECT_NAME}")
+set(vExecPath "${CMAKE_BINARY_DIR}/${vExecName}")
+add_executable(${vExecName} ./Main.cxx)
+
+# libs
+
+find_package(fmt REQUIRED)
+target_link_libraries(${vExecName} fmt::fmt)
+mark_as_advanced(FORCE fmt_DIR)
 
 # test
 
@@ -43,10 +52,10 @@ enable_testing()
 
 set(vTestName "tHello")
 add_test(NAME ${vTestName}
-    COMMAND ${vMainFile}
+    COMMAND ${vExecPath}
     ) # add_test
 set_tests_properties(${vTestName} PROPERTIES PASS_REGULAR_EXPRESSION
-    "HelloWorld"
+    "HelloError"
     ) # set_tests_properties
 
 # hide
