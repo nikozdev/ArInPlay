@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.3...3.8)
 # proj
 
 project(ArInPlay
-    VERSION 0.0.0
+    VERSION 0.0.1
     DESCRIPTION "artifical intelligence playground"
     ) # project
 
