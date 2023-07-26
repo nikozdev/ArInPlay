@@ -116,7 +116,42 @@ static const tCmdTab cCmdTab{
 		 );
 		 nTextFormat::println(stdout, ")=[{0:s}]", vCmdKey);
 	 }},
+	{
+		"tLoopInversion", [](tCmdKey vCmdKey)
+		{
+			nTextFormat::println(stdout, ")=[{0:s}]", vCmdKey);
+			for(unsigned vI = 2; vI > 0; --vI)
+			{
+				nTextFormat::println(stdout, "[I]=({})", vI);
+			}
+			nTextFormat::println(stdout, "[{0:s}]=(", vCmdKey);
+		}, },
 };
+//getters
+sf::Color fGetColor(float vValue, bool vFill, bool vSign)
+{
+	typedef union tPixel
+	{
+		struct
+		{
+			sf::Uint8 vA, vB, vG, vR;
+		};
+		sf::Uint32 vF = 0x00'00'00'00;
+	} tPixel;
+	sf::Uint8 vColorBase = vSign ? ((vValue + 1.0) * 60.0) : (vValue * 120.0);
+	tPixel		vPixel;
+	vPixel.vR = vColorBase;
+	vPixel.vG = vColorBase;
+	vPixel.vB = vColorBase;
+	if(!vFill)
+	{
+		vPixel.vR = 0xff - vPixel.vR;
+		vPixel.vG = 0xff - vPixel.vG;
+		vPixel.vB = 0xff - vPixel.vB;
+	}
+	vPixel.vA = 0xff;
+	return sf::Color{vPixel.vF};
+}//fGetColor
 //actions
 void fProc(sf::RenderWindow &rWindow)
 {
@@ -180,11 +215,14 @@ void fMain()
 	//neural network
 	tNeuronGraph vNGraph{
 		{0, 1}, //input
+		tNeuronLayer(8), //hidden
 		tNeuronLayer(4), //hidden
+		tNeuronLayer(8), //hidden
 		{0.0}, //output
 	};
 	nTextFormat::println(stderr, "[NeuronGraph]=({0})", vNGraph);
 	tWeightGraph vWGraph;
+  tWeightArray vWError;
 	size_t			 vWLayerCount = vNGraph.empty() ? 0 : ((vNGraph.size()) - 1);
 	for(size_t vLIndex = 0; vLIndex < vWLayerCount; vLIndex++)
 	{
@@ -204,10 +242,11 @@ void fMain()
 		}//create array of weights from each input into each output
 		continue;
 	}//create weight layer between each neuron layer
+  vWError.resize(vWGraph.back().size());
 	nTextFormat::println(stderr, "[WeightGraph]=({0})", vWGraph);
 	//window
 	const sf::VideoMode				vVideoMode(1'024, 1'024, 32);//sx,sy,bpp
-	const auto								cStyle = sf::Style::Default;
+	const auto								cStyle = sf::Style::Default; //bar|resize|close
 	const sf::ContextSettings vGfxSetup;
 	sf::RenderWindow					vWindow(vVideoMode, "ArInPlay", cStyle, vGfxSetup);
 	sf::Vector2f							vWindowSizeFull = {
@@ -219,7 +258,7 @@ void fMain()
 	vWindowSizeHalf.y = static_cast<float>(vWindowSizeFull.y) / 2.0;
 	//visual
 	tDrawList vDrawList;
-	//neurons
+	//-//build graphs
 	tShapeGraph vSGraph;
 	tLabelGraph vLGraph;
 	auto				pFont = std::make_shared<sf::Font>();
@@ -238,10 +277,7 @@ void fMain()
 		auto	vSStepY = vWindowSizeFull.y / (float)(rNLayer.size());
 		for(size_t vNIndex = 0; vNIndex < rNLayer.size(); vNIndex++)
 		{
-			tNeuronValue &rNValue		 = rNLayer[vNIndex];
-			sf::Uint32		vColorBase = (rNValue + 1.0) * 60.0;
-			sf::Uint32		vColorLine = 0xff'ff'ff'ff - vColorBase;
-			sf::Uint32		vColorFill = 0xff'ff'ff'00 + vColorBase;
+			tNeuronValue &rNValue = rNLayer[vNIndex];
 			//shape
 			auto vRadius = vWindowSizeFull.x;
 			vRadius /= (2 * vNGraph.size() * rNLayer.size());
@@ -254,9 +290,9 @@ void fMain()
 				+= vSStepY * ((float)vNIndex + 0.5 - ((float)(rNLayer.size()) / 2.0));
 			pSValue->setPosition(vCoord);
 			rSLayer.push_back(pSValue);
-			pSValue->setOutlineColor(sf::Color{vColorLine});
-			pSValue->setFillColor(sf::Color{vColorFill});
-			vDrawList.push_back(pSValue);
+			pSValue->setOutlineColor(fGetColor(rNValue, 0, 0));
+			pSValue->setOutlineThickness(1.0);
+			pSValue->setFillColor(fGetColor(rNValue, 1, 0));
 			//label
 			auto pLValue = std::make_shared<sf::Text>();
 			pLValue->setString(nTextFormat::format("{0:.2f}", rNValue));
@@ -269,14 +305,13 @@ void fMain()
 			vLSizeHalf.x /= 2.0;
 			vLSizeHalf.y /= 2.0;
 			pLValue->setOrigin(vLSizeHalf);
-			pLValue->setOutlineColor(sf::Color{vColorFill});
-			pLValue->setFillColor(sf::Color{vColorLine});
+			pLValue->setOutlineColor(fGetColor(rNValue, 1, 0));
+			pLValue->setOutlineThickness(1.0);
+			pLValue->setFillColor(fGetColor(rNValue, 0, 0));
 			rLLayer.push_back(pLValue);
-			//drawlist
-			vDrawList.push_back(pLValue);
-		}//create shapes and labels for each neuron
+		}
 		continue;
-	}//create shapes and labels for each layer
+	}//create neuron shapes and labels
 	tJointGraph vJGraph;
 	for(size_t vLIndex = 0; vLIndex < vWGraph.size(); vLIndex++)
 	{
@@ -294,10 +329,7 @@ void fMain()
 			tWeightArray &rWArray	 = rWLayer[vAIndex];
 			for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
 			{
-				tWeightValue &rWValue		 = rWArray[vWIndex];
-				sf::Uint32		vColorBase = (rWValue + 1.0) * 60.0;
-				sf::Uint32		vColorLine = 0xff'ff'ff'ff - vColorBase;
-				sf::Uint32		vColorFill = 0xff'ff'ff'00 + vColorBase;
+				tWeightValue &rWValue = rWArray[vWIndex];
 				//joint
 				rJArray.push_back(std::make_shared<sf::RectangleShape>());
 				tJointValue	 pJValue		 = rJArray.back();
@@ -316,14 +348,24 @@ void fMain()
 				pJValue->setOrigin({0.0, 8.0});
 				pJValue->setPosition(pSValueI->getPosition());
 				pJValue->setRotation(vDeg);
-				pJValue->setOutlineColor(sf::Color{vColorLine});
-				pJValue->setFillColor(sf::Color{vColorFill});
+				pJValue->setOutlineColor(fGetColor(rWValue, 0, 1));
+				pJValue->setOutlineThickness(1.0);
+				pJValue->setFillColor(fGetColor(rWValue, 1, 1));
 				vDrawList.push_back(pJValue);
-			}//create weight shape from each input into each output
-			continue;
-		}//create weight shape array from each input into each output
-		continue;
-	}//create weight shape layer between each neuron layer
+			}
+		}
+	}//create weight joints
+	for(size_t vLIndex = 0; vLIndex < vNGraph.size(); vLIndex++)
+	{
+		auto &rNLayer = vNGraph[vLIndex];
+		auto &rSLayer = vSGraph[vLIndex];
+		auto &rLLayer = vLGraph[vLIndex];
+		for(size_t vNIndex = 0; vNIndex < rNLayer.size(); vNIndex++)
+		{
+			vDrawList.push_back(rSLayer[vNIndex]);
+			vDrawList.push_back(rLLayer[vNIndex]);
+		}
+	}//push neuron shapes and labels into the draw list after the weight joints
 	sf::Clock vClock;
 	sf::Time	vTimePNow = vClock.getElapsedTime();
 	sf::Time	vTimePWas = vTimePNow;
@@ -340,13 +382,13 @@ void fMain()
 		vTimeFWas					 = vTimeFNow;
 		vTimeFNow					 = vTimePNow.asSeconds();
 		unsigned vTimeINow = static_cast<unsigned>(vTimeFNow);
-		if(static_cast<sf::Uint32>(vTimePNow.asMilliseconds()) % 100)
+		if(static_cast<sf::Uint32>(vTimePNow.asMilliseconds()) % 500 == 0)
 		{
 			//neural-network-training
 			auto vInputL	= static_cast<bool>(vRandomBool(vRandomEngine));
 			auto vInputR	= static_cast<bool>(vRandomBool(vRandomEngine));
-			vNGraph[0][0] = vInputL;
-			vNGraph[0][1] = vInputR;
+			vNGraph.front()[0] = vInputL;
+			vNGraph.front()[1] = vInputR;
 			//forward propagation
 			for(size_t vLIndex = 0; vLIndex < vWGraph.size(); vLIndex++)
 			{
@@ -361,64 +403,66 @@ void fMain()
 				std::fill(rNLayerO.begin(), rNLayerO.end(), tNeuronValue{0});
 				for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
 				{
-					auto &rNValueI		= rNLayerI[vAIndex];//neuron input
-					auto &rSValueI		= rSLayerI[vAIndex];//shape input
-					auto	vSColorBase = static_cast<sf::Uint32>((rNValueI + 1.0) * 60.0);
-					auto	vSColorFill = 0xff'ff'ff'00 + vSColorBase;
-					auto	vSColorLine = 0xff'ff'ff'ff - vSColorBase;
-					rSValueI->setOutlineColor(sf::Color{vSColorLine});
-					rSValueI->setFillColor(sf::Color{vSColorFill});
+					auto &rNValueI = rNLayerI[vAIndex];//neuron input
+					auto &rSValueI = rSLayerI[vAIndex];//shape input
+					rSValueI->setOutlineColor(fGetColor(rNValueI, 0, 0));
+					rSValueI->setFillColor(fGetColor(rNValueI, 1, 0));
 					auto &rLValueI = rLLayerI[vAIndex];//label input
 					rLValueI->setString(nTextFormat::format("{:.2f}", rNValueI));
-					rLValueI->setOutlineColor(sf::Color{vSColorFill});
-					rLValueI->setFillColor(sf::Color{vSColorLine});
+					rLValueI->setOutlineColor(fGetColor(rNValueI, 1, 0));
+					rLValueI->setFillColor(fGetColor(rNValueI, 0, 0));
 					auto &rWArray = rWLayer[vAIndex];//weight
 					auto &rJArray = rJLayer[vAIndex];//joint
 					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
 					{
-						if(vTimeIWas != vTimeINow)
-						{
-							nTextFormat::println(
-								stderr, "[LI]={}[AI]={}[WI]={}", vLIndex, vAIndex, vWIndex
-							);
-						}
-						auto &rWValue			= rWArray[vWIndex];//weight
-						auto &rJValue			= rJArray[vWIndex];//joint
-						auto	vJColorBase = static_cast<sf::Uint32>((rWValue + 1.0) * 60.0);
-						auto	vJColorLine = 0xff'ff'ff'ff - vJColorBase;
-						auto	vJColorFill = 0xff'ff'ff'00 + vJColorBase;
-						rJValue->setOutlineColor(sf::Color{vJColorLine});
-						rJValue->setFillColor(sf::Color{vJColorFill});
+						auto &rWValue = rWArray[vWIndex];//weight
+						auto &rJValue = rJArray[vWIndex];//joint
+						rJValue->setOutlineColor(fGetColor(rWValue, 0, 1));
+						rJValue->setFillColor(fGetColor(rWValue, 1, 1));
 						auto &rNValueO = rNLayerO[vWIndex];//neuron output
 						rNValueO			 = rNValueO + (rNValueI * rWValue);
 					}//activate neurons on the next layer using their weights
 					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
 					{
-						auto &rNValueO	 = rNLayerO[vWIndex];//neuron output
-						rNValueO				 = 1.0 / (1.0 + std::exp(-rNValueO));
-						auto &rSValueO	 = rSLayerO[vWIndex];//shape output
-						auto vSColorBase = static_cast<sf::Uint32>((rNValueO + 1.0) * 60.0);
-						auto vSColorFill = 0xff'ff'ff'00 + vSColorBase;
-						auto vSColorLine = 0xff'ff'ff'ff - vSColorBase;
-						rSValueO->setOutlineColor(sf::Color{vSColorLine});
-						rSValueO->setFillColor(sf::Color{vSColorFill});
+						auto &rNValueO = rNLayerO[vWIndex];//neuron output
+						rNValueO			 = 1.0 / (1.0 + std::exp(-rNValueO));
+						auto &rSValueO = rSLayerO[vWIndex];//shape output
+						rSValueO->setOutlineColor(fGetColor(rNValueO, 0, 0));
+						rSValueO->setFillColor(fGetColor(rNValueO, 1, 0));
 						auto &rLValueO = rLLayerO[vWIndex];//neuron output
 						rLValueO->setString(nTextFormat::format("{:.2f}", rNValueO));
-						rLValueO->setOutlineColor(sf::Color{vSColorFill});
-						rLValueO->setFillColor(sf::Color{vSColorLine});
+						rLValueO->setOutlineColor(fGetColor(rNValueO, 1, 0));
+						rLValueO->setFillColor(fGetColor(rNValueO, 0, 0));
 					}//apply activation function
 					continue;
-				}
+				}//
 				continue;
 			}//forward propagation
+			auto vOutput = vNGraph.back()[0];
 			auto vAnswer = static_cast<float>(vInputL ^ vInputR);
+			auto vEValue = vAnswer - vOutput;//how bad is the answer
 			//backward propagation
-			for(size_t vLIndex = 0; vLIndex < vWLayerCount; vLIndex++)
+			for(size_t vLIndex = vWLayerCount; vLIndex > 0; vLIndex--)
 			{
+				auto &rWLayer = vWGraph[vLIndex - 1];
+				for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
+				{
+					auto &rWArray = rWLayer[vAIndex];
+					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
+					{
+						auto &rWValue = rWArray[vWIndex];
+						auto	vOffset = vEValue / rWValue;
+						vOffset				= std::isnan(vOffset) ? (vEValue / 0.001) : vOffset;
+						rWValue				= rWValue - vOffset;
+						continue;
+					}//
+					continue;
+				}//
+				continue;
 			}//backward propagation
+			fProc(vWindow);
+			fDraw(vWindow, vDrawList);
 		}
-		fProc(vWindow);
-		fDraw(vWindow, vDrawList);
 	}//loop
 }//fMain
 int main(int vArgC, char *vArgV[])
