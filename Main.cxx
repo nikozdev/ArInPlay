@@ -33,17 +33,17 @@ namespace nTextFormat = fmt;
 #define fPairTextWithCode(vCode) #vCode, vCode
 //-//debug
 #define fDoIf(vExpr, vBool, ...) \
-	({                           \
-		if((vExpr) == vBool)     \
-		{                        \
-			__VA_ARGS__;         \
-		}                        \
+	({                             \
+		if((vExpr) == vBool)         \
+		{                            \
+			__VA_ARGS__;               \
+		}                            \
 	})
-#define fDoIfYes(vExpr, ...)		   fDoIf(vExpr, 1, __VA_ARGS__)
-#define fDoIfNot(vExpr, ...)		   fDoIf(vExpr, 0, __VA_ARGS__)
+#define fDoIfYes(vExpr, ...)					 fDoIf(vExpr, 1, __VA_ARGS__)
+#define fDoIfNot(vExpr, ...)					 fDoIf(vExpr, 0, __VA_ARGS__)
 #define fThrowIf(vExpr, vBool, vError) fDoIf(vExpr, vBool, throw vError)
-#define fThrowIfYes(vExpr, vError)	   fDoIfYes(vExpr, throw vError)
-#define fThrowIfNot(vExpr, vError)	   fDoIfNot(vExpr, throw vError)
+#define fThrowIfYes(vExpr, vError)		 fDoIfYes(vExpr, throw vError)
+#define fThrowIfNot(vExpr, vError)		 fDoIfNot(vExpr, throw vError)
 //typedef
 using tCmdKey = std::string_view;
 using tCmdFun = std::function<void(tCmdKey)>;
@@ -81,18 +81,16 @@ static const tCmdTab cCmdTab{
 	 {
 		 auto vPath = nFileSystem::current_path();
 		 nTextFormat::println(stdout, "[{0:s}]=(", vCmdKey);
-		 nTextFormat::println(
-			 stdout, "[{0:s}]=({1:s})", fPairTextWithCode(dPathToInternal)
-		 );
+		 nTextFormat::
+			 println(stdout, "[{0:s}]=({1:s})", fPairTextWithCode(dPathToInternal));
 		 nTextFormat::println(
 			 stdout,
 			 "[{0:s}]=({1:d})",
 			 dPathToResource,
 			 nFileSystem::exists(dPathToInternal)
 		 );
-		 nTextFormat::println(
-			 stdout, "[{0:s}]=({1:s})", fPairTextWithCode(dPathToResource)
-		 );
+		 nTextFormat::
+			 println(stdout, "[{0:s}]=({1:s})", fPairTextWithCode(dPathToResource));
 		 nTextFormat::println(
 			 stdout,
 			 "[{0:s}]=({1:d})",
@@ -177,16 +175,16 @@ void fMain()
 	//neural network
 	tNeuronGraph vNGraph{
 		{0, 1}, //input
-		{0, 0, 0}, //hidden
-		{0}, //output
+		{0.5, 0.25, 0.5}, //hidden
+		{0.75}, //output
 	};
 	nTextFormat::println(stderr, "[NeuronGraph]=({0})", vNGraph);
 	tWeightGraph vWGraph;
-	size_t		 vWLayerCount = vNGraph.empty() ? 0 : ((vNGraph.size()) - 1);
+	size_t			 vWLayerCount = vNGraph.empty() ? 0 : ((vNGraph.size()) - 1);
 	for(size_t vLIndex = 0; vLIndex < vWLayerCount; vLIndex++)
 	{
 		vWGraph.push_back({});
-		auto &rWLayer  = vWGraph.back();
+		auto &rWLayer	 = vWGraph.back();
 		auto &rNLayerO = vNGraph[vLIndex + 1];
 		auto &rNLayerI = vNGraph[vLIndex];
 		for(size_t vAIndex = 0; vAIndex < rNLayerI.size(); vAIndex++)
@@ -205,14 +203,14 @@ void fMain()
 	//system
 	sf::Clock vClock;
 	//window
-	const sf::VideoMode		  vVideoMode(512, 512, 8);//sx,sy,bpp
-	const auto				  cStyle = sf::Style::Default;
+	const sf::VideoMode				vVideoMode(512, 512, 8);//sx,sy,bpp
+	const auto								cStyle = sf::Style::Default;
 	const sf::ContextSettings vGfxSetup;
-	sf::RenderWindow vWindow(vVideoMode, "ArInPlay", cStyle, vGfxSetup);
-	sf::Vector2f	 vWindowSizeFull = {
-		static_cast<float>(vWindow.getSize().x),
-		static_cast<float>(vWindow.getSize().y),
-	};
+	sf::RenderWindow					vWindow(vVideoMode, "ArInPlay", cStyle, vGfxSetup);
+	sf::Vector2f							vWindowSizeFull = {
+		 static_cast<float>(vWindow.getSize().x),
+		 static_cast<float>(vWindow.getSize().y),
+	 };
 	sf::Vector2f vWindowSizeHalf;
 	vWindowSizeHalf.x = static_cast<float>(vWindowSizeFull.x) / 2.0;
 	vWindowSizeHalf.y = static_cast<float>(vWindowSizeFull.y) / 2.0;
@@ -221,7 +219,7 @@ void fMain()
 	//neurons
 	tShapeGraph vShapeGraph;
 	tLabelGraph vLabelGraph;
-	auto		pFont = std::make_shared<sf::Font>();
+	auto				pFont = std::make_shared<sf::Font>();
 	fThrowIfNot(
 		pFont->loadFromFile(dPathToResource "/kongtext.ttf"),
 		std::runtime_error("failed font loading")
@@ -234,10 +232,13 @@ void fMain()
 		auto &rSLayer = vShapeGraph.back();
 		vLabelGraph.push_back({});
 		auto &rLLayer = vLabelGraph.back();
-		auto  vSStepY = vWindowSizeFull.x / (float)(vNGraph.size());
+		auto	vSStepY = vWindowSizeFull.x / (float)(vNGraph.size());
 		for(size_t vNIndex = 0; vNIndex < rNLayer.size(); vNIndex++)
 		{
-			tNeuronValue &rNValue = rNLayer[vNIndex];
+			tNeuronValue &rNValue		 = rNLayer[vNIndex];
+			sf::Uint32		vColorBase = (rNValue + 1.0) * 40.0;
+			sf::Uint32		vColorFill = 0xff'ff'ff'00 + vColorBase;
+			sf::Uint32		vColorLine = 0xff'ff'ff'ff - vColorBase;
 			//shape
 			auto vRadius = vWindowSizeFull.x;
 			vRadius /= (2 * vNGraph.size() * rNLayer.size());
@@ -245,13 +246,13 @@ void fMain()
 			pSValue->setOrigin(vRadius, vRadius);
 			auto vCoord = vWindowSizeHalf;
 			vCoord.x
-				+= vSStepX
-				 * ((float)vLIndex + 0.375 - ((float)(vNGraph.size()) / 2.0));
+				+= vSStepX * ((float)vLIndex + 0.375 - ((float)(vNGraph.size()) / 2.0));
 			vCoord.y
-				+= vSStepY
-				 * ((float)vNIndex + 0.5 - ((float)(rNLayer.size()) / 2.0));
+				+= vSStepY * ((float)vNIndex + 0.5 - ((float)(rNLayer.size()) / 2.0));
 			pSValue->setPosition(vCoord);
 			rSLayer.push_back(pSValue);
+			pSValue->setFillColor(sf::Color{vColorFill});
+			pSValue->setOutlineColor(sf::Color{vColorLine});
 			vDrawList.push_back(pSValue);
 			//label
 			auto pLValue = std::make_shared<sf::Text>();
@@ -259,13 +260,14 @@ void fMain()
 			pLValue->setFont(*pFont);
 			pLValue->setCharacterSize(vRadius / 4.0);
 			pLValue->setPosition(vCoord);
-			auto vLRect		= pLValue->getGlobalBounds();
+			auto vLRect			= pLValue->getGlobalBounds();
 			auto vLSizeFull = vLRect.getSize();
 			auto vLSizeHalf = vLSizeFull;
 			vLSizeHalf.x /= 2.0;
 			vLSizeHalf.y /= 2.0;
 			pLValue->setOrigin(vLSizeHalf);
-			pLValue->setFillColor(sf::Color(0, 0, 0));
+			pLValue->setFillColor(sf::Color{vColorLine});
+			pLValue->setOutlineColor(sf::Color{vColorFill});
 			rLLayer.push_back(pLValue);
 			//drawlist
 			vDrawList.push_back(pLValue);
@@ -276,42 +278,43 @@ void fMain()
 	for(size_t vLIndex = 0; vLIndex < vWGraph.size(); vLIndex++)
 	{
 		vJointGraph.push_back({});
-		tJointLayer	 &rJLayer  = vJointGraph.back();
+		tJointLayer	 &rJLayer	 = vJointGraph.back();
 		tShapeLayer	 &rSLayerI = vShapeGraph[vLIndex];
 		tShapeLayer	 &rSLayerO = vShapeGraph[vLIndex + 1];
-		tWeightLayer &rWLayer  = vWGraph[vLIndex];
+		tWeightLayer &rWLayer	 = vWGraph[vLIndex];
 		for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
 		{
 			rJLayer.push_back({});
-			tJointArray	 &rJArray  = rJLayer.back();
-			tShapeValue	  pSValueI = rSLayerI[vAIndex];
-			sf::Vector2f  vSPointI = pSValueI->getPosition();
-			tWeightArray &rWArray  = rWLayer[vAIndex];
+			tJointArray	 &rJArray	 = rJLayer.back();
+			tShapeValue		pSValueI = rSLayerI[vAIndex];
+			sf::Vector2f	vSPointI = pSValueI->getPosition();
+			tWeightArray &rWArray	 = rWLayer[vAIndex];
 			for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
 			{
+				tWeightValue &rWValue		 = rWArray[vWIndex];
+				sf::Uint32		vColorBase = (rWValue + 1.0) * 40.0;
+				sf::Uint32		vColorFill = 0xff'ff'ff'00 + vColorBase;
+				sf::Uint32		vColorLine = 0xff'ff'ff'ff - vColorBase;
+				//shape
 				rJArray.push_back(std::make_shared<sf::RectangleShape>());
-				tJointValue	 pJValue	 = rJArray.back();
-				tShapeValue	 pSValueO	 = rSLayerO[vWIndex];
-				sf::Vector2f vSPointO	 = pSValueO->getPosition();
-				float		 vOpposite	 = vSPointO.y - vSPointI.y;
-				float		 vAdjacent	 = vSPointO.x - vSPointI.x;
-				float		 vHypotenuse = std::
-					sqrt((vOpposite * vOpposite) + (vAdjacent * vAdjacent));
-                float vSin = vOpposite / vHypotenuse;
-                float vArc = std::asinf(vSin);
-                float vDeg = vArc * 180.0 / M_PI;
+				tJointValue	 pJValue		 = rJArray.back();
+				tShapeValue	 pSValueO		 = rSLayerO[vWIndex];
+				sf::Vector2f vSPointO		 = pSValueO->getPosition();
+				float				 vOpposite	 = vSPointO.y - vSPointI.y;
+				float				 vAdjacent	 = vSPointO.x - vSPointI.x;
+				float				 vHypotenuse = 0.0;
+				vHypotenuse += (vOpposite * vOpposite);
+				vHypotenuse += (vAdjacent * vAdjacent);
+				vHypotenuse = std::sqrt(vHypotenuse);
+				float vSin	= vOpposite / vHypotenuse;
+				float vArc	= std::asinf(vSin);
+				float vDeg	= vArc * 180.0 / M_PI;
 				pJValue->setSize({vHypotenuse, 1.0});
-				pJValue->setOrigin({0.0, 0.5});
+				pJValue->setOrigin({0.0, 8.0});
 				pJValue->setPosition(pSValueI->getPosition());
-				nTextFormat::println(
-                    "[cos]={:.2f}[arc]={:.2f}[deg]={:.2f}"
-					"[adjacent]={:.2f}[opposite]={:.2f}"
-                    "[hypotenuse]={:.2f}",
-                    vSin, vArc, vDeg,
-					vAdjacent, vOpposite,
-                    vHypotenuse
-				);
 				pJValue->setRotation(vDeg);
+        pJValue->setFillColor(sf::Color{vColorFill});
+        pJValue->setOutlineColor(sf::Color{vColorLine});
 				vDrawList.push_back(pJValue);
 			}//create weight shape from each input into each output
 			continue;
@@ -321,7 +324,7 @@ void fMain()
 	while(vWindow.isOpen())
 	{
 		sf::Time vTimeP = vClock.getElapsedTime();
-		float	 vTimeF = vTimeP.asSeconds();
+		float		 vTimeF = vTimeP.asSeconds();
 		fProc(vWindow);
 		fDraw(vWindow, vDrawList);
 	}//loop
