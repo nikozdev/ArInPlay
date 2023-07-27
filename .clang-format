@@ -36,7 +36,7 @@ AlwaysBreakBeforeMultilineStrings:    false
 BinPackArguments:     false # f(a,a) or f(a,\na)
 BinPackParameters:    false # f(a,a) {} or f(a,\na) {}
 BitFieldColonSpacing: Both  # b:n(None)b : n(Both)b :n(Before)b: n(After)
-BreakBeforeBraces: Allman
+BreakBeforeBraces: Custom
 BraceWrapping: # break line after these triggers
   AfterControlStatement: Always # if, for, while ... {}
   AfterCaseLabel:        true
