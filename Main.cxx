@@ -129,11 +129,17 @@ public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
 	{
-		vStream << "(" << std::endl;
-		vStream << "[NeuronVector]=(" << vNeuronVector << ")" << std::endl;
-		vStream << "[WeightMatrix]=(" << vWeightMatrix << ")" << std::endl;
-		vStream << "[OffsetVector]=(" << vWeightMatrix << ")" << std::endl;
-		return vStream << ")" << std::endl;
+		vStream << "[TypeName]=LayerOfNetworkDense=[TypeName]" << std::endl;
+		vStream << "[NeuronVector]=(" << std::endl;
+    vStream << vNeuronVector << std::endl;
+		vStream << ")=[NeuronVector]" << std::endl;
+		vStream << "[WeightMatrix]=(" << std::endl;
+    vStream << vWeightMatrix << std::endl;
+		vStream << ")=[WeightMatrix]" << std::endl;
+		vStream << "[OffsetVector]=(" << std::endl;
+    vStream << vOffsetVector << std::endl;
+		vStream << ")=[OffsetVector]" << std::endl;
+		return vStream;
 	}//operator<<
 
 private://datadef
@@ -165,7 +171,6 @@ public://actions
 		{
 			rIput = fActiv(rIput);
 		}
-		vNeuronVector = vIput;
 		return vIput;
 	}//fGoAhead
 	virtual tVector fGoAback(tVector vOput) override
@@ -181,14 +186,12 @@ public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
 	{
-		vStream << "(" << std::endl;
-		vStream << "[NeuronVector]=(" << vNeuronVector << ")" << std::endl;
-		return vStream << ")" << std::endl;
+		vStream << "[TypeName]=LayerOfNetworkActiv=[TypeName]" << std::endl;
+		return vStream;
 	}//operator<<
 
 private://datadef
 
-	tVector vNeuronVector;
 	tActiv	fActiv, fPrime;
 
 } tLayerOfNetworkActiv;
@@ -254,11 +257,13 @@ public://operats
 
 	inline std::ostream &operator<<(std::ostream &vStream) const
 	{
-		for(auto &pLayer: vArray)
+		for(size_t vIndex = 0; vIndex < vArray.size(); vIndex++)
 		{
-			vStream << *pLayer;
+			vStream << "[" << vIndex << "]=(" << std::endl;
+      vStream << *vArray[vIndex];
+      vStream << ")=[" << vIndex << "]" << std::endl;
 		}
-		return vStream;
+    return vStream;
 	}//operator<<
 
 private://datadef
@@ -336,7 +341,7 @@ static const tCmdTab cCmdTab{
 		 nTextFormat::println(
 			 stdout,
 			 "[{0:s}]=({1:d})",
-			 dPathToResource,
+			 dPathToInternal,
 			 nFileSystem::exists(dPathToInternal)
 		 );
 		 nTextFormat::
@@ -373,27 +378,30 @@ static const tCmdTab cCmdTab{
 	{"tMakerOfNetwork",
 	 []()
 	 {
-     auto pGraphOfNetwork
-       = tMakerOfNetwork()
-       .fMakeLayer<tLayerOfNetworkDense>(2, 3)
-       .fMakeLayer<tLayerOfNetworkActivTanh>()
-       .fMakeLayer<tLayerOfNetworkDense>(3, 1)
-       .fMakeLayer<tLayerOfNetworkActivTanh>()
-       .fTakeGraph();
-     std::cout << *pGraphOfNetwork << std::endl;
-   }},
+		 auto pGraphOfNetwork
+			 = tMakerOfNetwork()
+					 .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fTakeGraph();
+		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
+     std::clog << *pGraphOfNetwork << ")" << std::endl;
+	 }},
 	{"tSolutionOfXor",
 	 []()
 	 {
-     auto pGraphOfNetwork
-       = tMakerOfNetwork()
-       .fMakeLayer<tLayerOfNetworkDense>(2, 3)
-       .fMakeLayer<tLayerOfNetworkActivTanh>()
-       .fMakeLayer<tLayerOfNetworkDense>(3, 1)
-       .fMakeLayer<tLayerOfNetworkActivTanh>()
-       .fTakeGraph();
-     std::cout << *pGraphOfNetwork << std::endl;
-   }},
+		 auto pGraphOfNetwork
+			 = tMakerOfNetwork()
+					 .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fTakeGraph();
+		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
+     std::clog << *pGraphOfNetwork << std::endl;
+		 std::clog << ")=[pGraphOfNetwork]" << std::endl;
+	 }},
 };
 //getters
 sf::Color fGetColor(float vValue, bool vFill, bool vSign)
@@ -431,7 +439,7 @@ int fMain()
 	fThrowIfNot(
 		nFileSystem::current_path() == dPathToInternal,
 		std::runtime_error(nTextFormat::format(
-			"failed to find the resource path: {0}", dPathToResource
+			"failed to find the internal path: {0}", dPathToInternal
 		))
 	);
 	fThrowIfNot(
@@ -523,9 +531,9 @@ int main(int vArgC, char *vArgV[])
 		}
 		else if(auto vI = cCmdTab.find(vArgV[1]); vI != cCmdTab.end())
 		{
-		 nTextFormat::println(stdout, "[{0:s}]=(", vI->first);
+			nTextFormat::println(stdout, "[{0:s}]=(", vI->first);
 			vI->second();
-		 nTextFormat::println(stdout, ")=[{0:s}]", vI->first);
+			nTextFormat::println(stdout, ")=[{0:s}]", vI->first);
 		}
 		else
 		{

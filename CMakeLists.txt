@@ -96,12 +96,12 @@ add_test(NAME ${vNameOfTest}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ) # add_test
 set(vTextOfTest "")
-string(APPEND vTextOfTest ".+[${vNameOfTest}]=(\n")
-string(APPEND vTextOfTest ".+[dPathToInternal]=(${vPathToInternal})\n")
-#string(APPEND vTextOfTest ".+[${vPathToInternal}]=(1)\n")
-string(APPEND vTextOfTest ".+[dPathToResource]=(${vPathToResource})\n")
-#string(APPEND vTextOfTest ".+[${vPathToResource}]=(1)\n")
-string(APPEND vTextOfTest ".+)=[${vNameOfTest}]\n")
+string(APPEND vTextOfTest "[${vNameOfTest}]=(.+")
+string(APPEND vTextOfTest "[dPathToInternal]=(${vPathToInternal}).+")
+string(APPEND vTextOfTest "[${vPathToInternal}]=(1).+")
+string(APPEND vTextOfTest "[dPathToResource]=(${vPathToResource}).+")
+string(APPEND vTextOfTest "[${vPathToResource}]=(1).+")
+string(APPEND vTextOfTest ")=[${vNameOfTest}]\n")
 fFilterOfText(vTextOfTest)
 set_tests_properties(${vNameOfTest} PROPERTIES
     PASS_REGULAR_EXPRESSION ${vTextOfTest}
@@ -113,10 +113,23 @@ add_test(NAME ${vNameOfTest}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ) # add_test
 set(vTextOfTest "")
-string(APPEND vTextOfTest ".+[${vNameOfTest}]=(\n")
-string(APPEND vTextOfTest ".+[.+(\"{:.2f}\", M_PI)]=(3.14))\n")
-string(APPEND vTextOfTest ".+[.+(\"{:.02f}\", M_PI)]=(3.14))\n")
-string(APPEND vTextOfTest ".+)=[${vNameOfTest}]\n")
+string(APPEND vTextOfTest "[${vNameOfTest}]=(.+")
+string(APPEND vTextOfTest "[.+(\"{:.2f}\", M_PI)]=(3.14).+")
+string(APPEND vTextOfTest "[.+(\"{:.02f}\", M_PI)]=(3.14).+")
+string(APPEND vTextOfTest ")=[${vNameOfTest}]\n")
+fFilterOfText(vTextOfTest)
+set_tests_properties(${vNameOfTest} PROPERTIES
+    PASS_REGULAR_EXPRESSION ${vTextOfTest}
+    ) # set_tests_properties
+
+set(vNameOfTest "tMakerOfNetwork")
+add_test(NAME ${vNameOfTest}
+    COMMAND ${vPathToExec} ${vNameOfTest}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ) # add_test
+set(vTextOfTest "")
+string(APPEND vTextOfTest "[${vNameOfTest}]=(.+")
+string(APPEND vTextOfTest ")=[${vNameOfTest}]\n")
 fFilterOfText(vTextOfTest)
 set_tests_properties(${vNameOfTest} PROPERTIES
     PASS_REGULAR_EXPRESSION ${vTextOfTest}
