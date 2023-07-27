@@ -47,21 +47,21 @@ namespace nTextFormat = fmt;
 #define fThrowIfYes(vExpr, vError)		 fDoIfYes(vExpr, throw vError)
 #define fThrowIfNot(vExpr, vError)		 fDoIfNot(vExpr, throw vError)
 //datadef
-static std::random_device								vRandomDevice;
-static std::mt19937_64									vRandomEngine(vRandomDevice());
-static std::uniform_real_distribution<> vRandomNorm(-1.0, +1.0);
-static std::uniform_int_distribution<>	vRandomBool(0, 1);
+static std::random_device								vRandDevice;
+static std::mt19937_64									vRandEngine(vRandDevice());
+static std::uniform_real_distribution<> vRandNorm(-1.0, +1.0);
+static std::uniform_int_distribution<>	vRandBool(0, 1);
 //typedef
 using tCmdKey = std::string_view;
 using tCmdFun = std::function<void()>;
 using tCmdTab = std::unordered_map<tCmdKey, tCmdFun>;
 //-//maths
-using tNumber = double;					//the type of number to use
-using tNeuron = tNumber;				//input and output values
-using tWeight = tNumber;				//input-output coefficient
-using tOffset = tNumber;				//aka bias
-using tVector = Eigen::VectorXd;//array of numbers
-using tMatrix = Eigen::MatrixXd;//array of vectors
+using tNum	= double;					//the type of number to use
+using tVec	= Eigen::VectorXd;//array of numbers
+using tMat	= Eigen::MatrixXd;//array of vectors
+using tNode = tNum;						//input and output values
+using tEdge = tNum;						//input-output coefficient
+using tBias = tNum;						//aka bias
 /* type of layer of neural network */
 typedef class tLayerOfNetwork
 {
@@ -71,8 +71,8 @@ public://codetor
 
 public://actions
 
-	virtual tVector fGoAhead(tVector vIput) = 0;
-	virtual tVector fGoAback(tVector vOput) = 0;
+	virtual void fAhead(tVec &vIputVec) = 0;
+	virtual void fAback(tVec &vOputVec) = 0;
 
 public://operats
 
@@ -89,64 +89,56 @@ typedef class tLayerOfNetworkDense final: public tLayerOfNetwork
 {
 public://codetor
 
-	tLayerOfNetworkDense(size_t vICount, size_t vOCount)
-		: vNeuronVector(vICount)
-		, vWeightMatrix(vICount, vOCount)
-		, vOffsetVector(vOCount)
+	tLayerOfNetworkDense(size_t vIputDim, size_t vOputDim)
+		: vNodeVec(vIputDim), vEdgeMat(vOputDim, vIputDim), vBiasVec(vOputDim)
 	{
-		for(size_t vX = 0; vX < vOCount; vX++)
+		for(size_t vY = 0; vY < vOputDim; vY++)
 		{
-			vOffsetVector(vX) = vRandomNorm(vRandomEngine);
-			for(size_t vY = 0; vY < vICount; vY++)
+			vBiasVec[vY] = vRandNorm(vRandEngine);
+			for(size_t vX = 0; vX < vIputDim; vX++)
 			{
-				vWeightMatrix(vY, vX) = vRandomNorm(vRandomEngine);
+				vEdgeMat(vY, vX) = vRandNorm(vRandEngine);
 			}
 		}
-	}//tLayerOfNetworkDense
+	}
 
 public://actions
 
-	virtual tVector fGoAhead(tVector vIput) override
+	virtual void fAhead(tVec &vIputVec) override
 	{
-		/*
-		vIput					= (vWeightMatrix * vIput) + vOffsetVector;
-		vNeuronVector = vIput;
-		*/
-		return vIput;
-	}//fGoAhead
+		vNodeVec = vIputVec;
+		vIputVec = (vEdgeMat * vIputVec) + vBiasVec;
+	}//fAhead
 
-	virtual tVector fGoAback(tVector vOput) override
+	virtual void fAback(tVec &vOputVec) override
 	{
-		/*
-		vWeightMatrix = vWeightMatrix - (vOput * vNeuronVector.transpose());
-		vOffsetVector = vOffsetVector - (vOput);
-		vOput					= vOput * vWeightMatrix.transpose();
-		*/
-		return vOput;
-	}//fGoAback
+		vEdgeMat = vEdgeMat - ((vOputVec * vNodeVec.transpose()) * 0.1);
+		vBiasVec = vBiasVec - ((vOputVec)*0.1);
+		vOputVec = vEdgeMat.transpose() * vOputVec;
+	}//fAback
 
 public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
 	{
-		vStream << "[TypeName]=LayerOfNetworkDense=[TypeName]" << std::endl;
-		vStream << "[NeuronVector]=(" << std::endl;
-    vStream << vNeuronVector << std::endl;
-		vStream << ")=[NeuronVector]" << std::endl;
-		vStream << "[WeightMatrix]=(" << std::endl;
-    vStream << vWeightMatrix << std::endl;
-		vStream << ")=[WeightMatrix]" << std::endl;
-		vStream << "[OffsetVector]=(" << std::endl;
-    vStream << vOffsetVector << std::endl;
-		vStream << ")=[OffsetVector]" << std::endl;
+		vStream << "[NodeVec]=(" << std::endl;
+		vStream << vNodeVec << std::endl;
+		vStream << ")=[NodeVec]" << std::endl;
+		vStream << "[EdgeMat]=(" << std::endl;
+		vStream << vEdgeMat << std::endl;
+		vStream << ")=[EdgeMat]" << std::endl;
+		vStream << "[BiasVec]=(" << std::endl;
+		vStream << vBiasVec << std::endl;
+		vStream << ")=[BiasVec]" << std::endl;
 		return vStream;
 	}//operator<<
 
 private://datadef
 
-	tVector vNeuronVector;
-	tMatrix vWeightMatrix;
-	tVector vOffsetVector;
+	tVec vNodeVec;//neuron vector
+
+	tMat vEdgeMat;//weight matrix
+	tVec vBiasVec;//bias vector
 
 } tLayerOfNetworkDense;
 /* type of layer of network activation */
@@ -154,7 +146,7 @@ typedef class tLayerOfNetworkActiv: public tLayerOfNetwork
 {
 public://typedef
 
-	using tActiv = std::function<tNumber(tNumber)>;
+	using tActiv = std::function<void(tVec &)>;
 
 public://codetor
 
@@ -165,54 +157,66 @@ public://codetor
 
 public://actions
 
-	virtual tVector fGoAhead(tVector vIput) override
+	virtual void fAhead(tVec &vIputVec) override
 	{
-		for(auto &rIput: vIput)
-		{
-			rIput = fActiv(rIput);
-		}
-		return vIput;
-	}//fGoAhead
-	virtual tVector fGoAback(tVector vOput) override
+		vNodeVec = vIputVec;
+		fActiv(vIputVec);
+	}//fAhead
+	virtual void fAback(tVec &vOputVec) override
 	{
-		for(auto &rOput: vOput)
-		{
-			rOput = fPrime(rOput);
-		}
-		return vOput;
-	}//fGoAback
+		fPrime(vNodeVec);
+		vOputVec = vOputVec.array() * vNodeVec.array();
+	}//fAback
 
 public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
 	{
-		vStream << "[TypeName]=LayerOfNetworkActiv=[TypeName]" << std::endl;
+		vStream << "[NodeVec]=(" << std::endl;
+		vStream << vNodeVec << std::endl;
+		vStream << ")=[NodeVec]" << std::endl;
 		return vStream;
 	}//operator<<
 
 private://datadef
 
-	tActiv	fActiv, fPrime;
+	tVec vNodeVec;
+
+	tActiv fActiv, fPrime;
 
 } tLayerOfNetworkActiv;
 typedef class tLayerOfNetworkActivTanh final: public tLayerOfNetworkActiv
 {
 public://codetor
 
-	tLayerOfNetworkActivTanh(): tLayerOfNetworkActiv(fActiv, fPrime)
+	tLayerOfNetworkActivTanh(): tLayerOfNetworkActiv(fActivVec, fPrimeVec)
 	{
 	}
 
 public://actions
 
-	static tNumber fActiv(tNumber vNumber)
+	static tNum fActivNum(tNum vIputNum)
 	{
-		return std::tanh(vNumber);
-	}//fActiv
-	static tNumber fPrime(tNumber vNumber)
+		return std::tanh(vIputNum);
+	}//fActivNum
+	static void fActivVec(tVec &vIputVec)
 	{
-		return 1 - std::pow(std::tanh(vNumber), 2);
-	}//fPrime
+		for(auto &vIputNum: vIputVec)
+		{
+			vIputNum = fActivNum(vIputNum);
+		}
+	}//fActivVec
+	static tNum fPrimeNum(tNum vOputNum)
+	{
+		return (1 - std::pow(std::tanh(vOputNum), 2.0));
+	}//fPrimeNum
+	static void fPrimeVec(tVec &vOputVec)
+	{
+		for(auto &vOputNum: vOputVec)
+		{
+			vOputNum = fPrimeNum(vOputNum);
+		}
+	}//fPrimeVec
 
 } tLayerOfNetworkActivTanh;
 /* type of graph of neural network */
@@ -234,24 +238,26 @@ public://codetor
 
 public://actions
 
-	inline auto fLearn(tVector vIput, tVector vNeed)
+	inline void fAhead(tVec &vIputVec)
 	{
-		tVector vOput = tVector(vNeed.size());
-#if 0
-		for(auto &rLayer: this->vArray)
+		for(size_t vIndex = 0; vIndex < vArray.size(); vIndex++)
 		{
-			vOput = rLayer->fGoAhead(vOput);
+			vArray[vIndex]->fAhead(vIputVec);
 		}
-#endif
-#if 0
-		tVector vError = (vNeed - vOput);
-		for(auto &rLayer: this->vArray)
+	}//fAhead
+	inline void fAback(tVec &vOput)
+	{
+		for(size_t vIndex = vArray.size(); --vIndex > 0; vIndex)
 		{
-			vError = rLayer->fGoAback(vError);
+			vArray[vIndex]->fAback(vOput);
 		}
-#endif
-		return vOput;
-	}//fWork
+	}//fAback
+	inline void fLearn(tVec &vIputVec, const tVec &vTrueVec)
+	{
+		fAhead(vIputVec);
+		tVec vCostVec = (2 * (vIputVec - vTrueVec)).colwise().mean();
+		fAback(vCostVec);
+	}//fLearn
 
 public://operats
 
@@ -260,10 +266,10 @@ public://operats
 		for(size_t vIndex = 0; vIndex < vArray.size(); vIndex++)
 		{
 			vStream << "[" << vIndex << "]=(" << std::endl;
-      vStream << *vArray[vIndex];
-      vStream << ")=[" << vIndex << "]" << std::endl;
+			vStream << *vArray[vIndex];
+			vStream << ")=[" << vIndex << "]" << std::endl;
 		}
-    return vStream;
+		return vStream;
 	}//operator<<
 
 private://datadef
@@ -386,7 +392,7 @@ static const tCmdTab cCmdTab{
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
 					 .fTakeGraph();
 		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
-     std::clog << *pGraphOfNetwork << ")" << std::endl;
+		 std::clog << *pGraphOfNetwork << ")" << std::endl;
 	 }},
 	{"tSolutionOfXor",
 	 []()
@@ -398,9 +404,54 @@ static const tCmdTab cCmdTab{
 					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
 					 .fTakeGraph();
-		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
-     std::clog << *pGraphOfNetwork << std::endl;
-		 std::clog << ")=[pGraphOfNetwork]" << std::endl;
+		 size_t vCount = 1'000'000;
+		 for(size_t vIndex = 0; vIndex < vCount; vIndex++)
+		 {
+			 auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
+			 auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
+			 auto vInputV = tVec(2);
+			 vInputV[0]		= static_cast<tNum>(vInputL);
+			 vInputV[1]		= static_cast<tNum>(vInputR);
+#if 0
+       pGraphOfNetwork->fAhead(vInputV);
+#else
+			 auto vAnswer = tVec(1);
+			 vAnswer[0]		= static_cast<tNum>(vInputL ^ vInputR);
+			 pGraphOfNetwork->fLearn(vInputV, vAnswer);
+#endif
+			 if(vIndex % (vCount / 10) == 0)
+			 {
+				 if(vInputV[0] > 0.5)
+				 {
+					 vInputV[0] = 1.0;
+				 }
+				 else
+				 {
+					 vInputV[0] = 0.0;
+				 }
+				 std::clog << "[" << vInputL << " ^ " << vInputR << "]";
+				 std::clog << " = " << vInputV << " " << vAnswer << std::endl;
+			 }
+		 }
+	 }},
+	{"tMatrix",
+	 []()
+	 {
+		 tMat vM0(2, 2);
+		 vM0(0, 0) = 2.0;
+		 vM0(1, 1) = 2.0;
+		 tMat vM1(2, 2);
+		 vM1(0, 0) = 4.0;
+		 vM1(1, 0) = 4.0;
+		 std::clog << vM0 << std::endl << "*" << std::endl << vM1 << std::endl;
+		 std::clog << "=" << std::endl << vM0 * vM1 << std::endl << std::endl;
+		 std::clog << vM1 << std::endl << "*" << std::endl << vM0 << std::endl;
+		 std::clog << "=" << std::endl << vM1 * vM0 << std::endl << std::endl;
+		 tVec vV0(2);
+		 std::clog << vM0 << std::endl << "*" << std::endl << vV0 << std::endl;
+		 std::clog << "=" << std::endl << vM0 * vV0 << std::endl << std::endl;
+		 std::clog << vV0 << std::endl << "*" << std::endl << vM1 << std::endl;
+		 std::clog << "=" << std::endl << vV0 * vM1 << std::endl << std::endl;
 	 }},
 };
 //getters
@@ -496,10 +547,14 @@ int fMain()
 		//intel
 		if(static_cast<unsigned>(vTimePNow.asMilliseconds()) % 500 == 0)
 		{
-			auto vInputL = static_cast<bool>(vRandomBool(vRandomEngine));
-			auto vInputR = static_cast<bool>(vRandomBool(vRandomEngine));
-			auto vAnswer = tVector{vInputL ^ vInputR};
-			//pGraphOfNetwork->fLearn({vInputL, vInputR}, vAnswer);
+			auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
+			auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
+			auto vInputV = tVec(2);
+			vInputV[0]	 = static_cast<tNum>(vInputL);
+			vInputV[1]	 = static_cast<tNum>(vInputR);
+			auto vAnswer = tVec(1);
+			vAnswer[0]	 = static_cast<tNum>(vInputL ^ vInputR);
+			pGraphOfNetwork->fLearn(vInputV, vAnswer);
 		}//intel
 		sf::Event vWindowEvent;
 		vWindow.pollEvent(vWindowEvent);
