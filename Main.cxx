@@ -7,6 +7,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <Eigen/Dense>
 //-//memory
 #include <memory>
 //-//strings
@@ -45,18 +46,268 @@ namespace nTextFormat = fmt;
 #define fThrowIf(vExpr, vBool, vError) fDoIf(vExpr, vBool, throw vError)
 #define fThrowIfYes(vExpr, vError)		 fDoIfYes(vExpr, throw vError)
 #define fThrowIfNot(vExpr, vError)		 fDoIfNot(vExpr, throw vError)
+//datadef
+static std::random_device								vRandomDevice;
+static std::mt19937_64									vRandomEngine(vRandomDevice());
+static std::uniform_real_distribution<> vRandomNorm(-1.0, +1.0);
+static std::uniform_int_distribution<>	vRandomBool(0, 1);
 //typedef
 using tCmdKey = std::string_view;
-using tCmdFun = std::function<void(tCmdKey)>;
+using tCmdFun = std::function<void()>;
 using tCmdTab = std::unordered_map<tCmdKey, tCmdFun>;
-//-//logic
-using tNeuronValue = float;
-using tNeuronLayer = std::vector<tNeuronValue>;
-using tNeuronGraph = std::vector<tNeuronLayer>;
-using tWeightValue = float;
-using tWeightArray = std::vector<tWeightValue>;//from inputs
-using tWeightLayer = std::vector<tWeightArray>;//into outputs
-using tWeightGraph = std::vector<tWeightLayer>;
+//-//maths
+using tNumber = double;					//the type of number to use
+using tNeuron = tNumber;				//input and output values
+using tWeight = tNumber;				//input-output coefficient
+using tOffset = tNumber;				//aka bias
+using tVector = Eigen::VectorXd;//array of numbers
+using tMatrix = Eigen::MatrixXd;//array of vectors
+/* type of layer of neural network */
+typedef class tLayerOfNetwork
+{
+public://codetor
+
+	virtual ~tLayerOfNetwork() = default;
+
+public://actions
+
+	virtual tVector fGoAhead(tVector vIput) = 0;
+	virtual tVector fGoAback(tVector vOput) = 0;
+
+public://operats
+
+	virtual std::ostream &operator<<(std::ostream &vStream) const = 0;
+
+} tLayerOfNetwork;
+inline std::ostream &
+operator<<(std::ostream &vStream, const tLayerOfNetwork &rLayer)
+{
+	return rLayer.operator<<(vStream);
+}//operator<<
+/* type of layer of network dense */
+typedef class tLayerOfNetworkDense final: public tLayerOfNetwork
+{
+public://codetor
+
+	tLayerOfNetworkDense(size_t vICount, size_t vOCount)
+		: vNeuronVector(vICount)
+		, vWeightMatrix(vICount, vOCount)
+		, vOffsetVector(vOCount)
+	{
+		for(size_t vX = 0; vX < vOCount; vX++)
+		{
+			vOffsetVector(vX) = vRandomNorm(vRandomEngine);
+			for(size_t vY = 0; vY < vICount; vY++)
+			{
+				vWeightMatrix(vY, vX) = vRandomNorm(vRandomEngine);
+			}
+		}
+	}//tLayerOfNetworkDense
+
+public://actions
+
+	virtual tVector fGoAhead(tVector vIput) override
+	{
+		/*
+		vIput					= (vWeightMatrix * vIput) + vOffsetVector;
+		vNeuronVector = vIput;
+		*/
+		return vIput;
+	}//fGoAhead
+
+	virtual tVector fGoAback(tVector vOput) override
+	{
+		/*
+		vWeightMatrix = vWeightMatrix - (vOput * vNeuronVector.transpose());
+		vOffsetVector = vOffsetVector - (vOput);
+		vOput					= vOput * vWeightMatrix.transpose();
+		*/
+		return vOput;
+	}//fGoAback
+
+public://operats
+
+	virtual std::ostream &operator<<(std::ostream &vStream) const override
+	{
+		vStream << "(" << std::endl;
+		vStream << "[NeuronVector]=(" << vNeuronVector << ")" << std::endl;
+		vStream << "[WeightMatrix]=(" << vWeightMatrix << ")" << std::endl;
+		vStream << "[OffsetVector]=(" << vWeightMatrix << ")" << std::endl;
+		return vStream << ")" << std::endl;
+	}//operator<<
+
+private://datadef
+
+	tVector vNeuronVector;
+	tMatrix vWeightMatrix;
+	tVector vOffsetVector;
+
+} tLayerOfNetworkDense;
+/* type of layer of network activation */
+typedef class tLayerOfNetworkActiv: public tLayerOfNetwork
+{
+public://typedef
+
+	using tActiv = std::function<tNumber(tNumber)>;
+
+public://codetor
+
+	tLayerOfNetworkActiv(const tActiv &fActiv, const tActiv &fPrime)
+		: fActiv{fActiv}, fPrime{fPrime}
+	{
+	}
+
+public://actions
+
+	virtual tVector fGoAhead(tVector vIput) override
+	{
+		for(auto &rIput: vIput)
+		{
+			rIput = fActiv(rIput);
+		}
+		vNeuronVector = vIput;
+		return vIput;
+	}//fGoAhead
+	virtual tVector fGoAback(tVector vOput) override
+	{
+		for(auto &rOput: vOput)
+		{
+			rOput = fPrime(rOput);
+		}
+		return vOput;
+	}//fGoAback
+
+public://operats
+
+	virtual std::ostream &operator<<(std::ostream &vStream) const override
+	{
+		vStream << "(" << std::endl;
+		vStream << "[NeuronVector]=(" << vNeuronVector << ")" << std::endl;
+		return vStream << ")" << std::endl;
+	}//operator<<
+
+private://datadef
+
+	tVector vNeuronVector;
+	tActiv	fActiv, fPrime;
+
+} tLayerOfNetworkActiv;
+typedef class tLayerOfNetworkActivTanh final: public tLayerOfNetworkActiv
+{
+public://codetor
+
+	tLayerOfNetworkActivTanh(): tLayerOfNetworkActiv(fActiv, fPrime)
+	{
+	}
+
+public://actions
+
+	static tNumber fActiv(tNumber vNumber)
+	{
+		return std::tanh(vNumber);
+	}//fActiv
+	static tNumber fPrime(tNumber vNumber)
+	{
+		return 1 - std::pow(std::tanh(vNumber), 2);
+	}//fPrime
+
+} tLayerOfNetworkActivTanh;
+/* type of graph of neural network */
+typedef class tGraphOfNetwork final
+{
+public://typedef
+
+	using tLayer = tLayerOfNetwork;
+	using tRefer = std::shared_ptr<tLayer>;
+	using tArray = std::vector<tRefer>;
+
+private://codetor
+
+	tGraphOfNetwork() = default;
+
+public://codetor
+
+	~tGraphOfNetwork() = default;
+
+public://actions
+
+	inline auto fLearn(tVector vIput, tVector vNeed)
+	{
+		tVector vOput = tVector(vNeed.size());
+#if 0
+		for(auto &rLayer: this->vArray)
+		{
+			vOput = rLayer->fGoAhead(vOput);
+		}
+#endif
+#if 0
+		tVector vError = (vNeed - vOput);
+		for(auto &rLayer: this->vArray)
+		{
+			vError = rLayer->fGoAback(vError);
+		}
+#endif
+		return vOput;
+	}//fWork
+
+public://operats
+
+	inline std::ostream &operator<<(std::ostream &vStream) const
+	{
+		for(auto &pLayer: vArray)
+		{
+			vStream << *pLayer;
+		}
+		return vStream;
+	}//operator<<
+
+private://datadef
+
+	tArray vArray;
+
+private://friends
+
+	typedef class tMakerOfNetwork tMakerOfNetwork;
+	friend tMakerOfNetwork;
+
+} tGraphOfNetwork;
+inline std::ostream &
+operator<<(std::ostream &vStream, const tGraphOfNetwork &rGraph)
+{
+	return rGraph.operator<<(vStream);
+}//operator<<
+/* type of maker of network */
+typedef class tMakerOfNetwork final
+{
+public://typedef
+
+	using tGraph = tGraphOfNetwork;
+
+public://actions
+
+	tMakerOfNetwork(): pGraph{new tGraph()}
+	{
+	}
+
+public://actions
+
+	template<typename tLayerT, typename... tArgT>
+	auto fMakeLayer(tArgT &&...rArgT)
+	{
+		auto vLayer = std::make_shared<tLayerT>(std::forward<tArgT>(rArgT)...);
+		this->pGraph->vArray.push_back(vLayer);
+		return *this;
+	}
+	auto fTakeGraph()
+	{
+		return this->pGraph;
+	}
+
+private://datadef
+
+	std::shared_ptr<tGraph> pGraph;
+
+} tMakerOfNetwork;
 //-//graphics
 using tDrawIter = std::shared_ptr<sf::Drawable>;
 using tDrawList = std::vector<tDrawIter>;
@@ -75,13 +326,11 @@ using tShapeGraph = std::vector<tShapeLayer>;
 using tLabelGraph = std::vector<tLabelLayer>;
 using tJointGraph = std::vector<tJointLayer>;
 //consdef
-//datadef
 static const tCmdTab cCmdTab{
 	{"tFileSystem",
-	 [](tCmdKey vCmdKey)
+	 []()
 	 {
 		 auto vPath = nFileSystem::current_path();
-		 nTextFormat::println(stdout, "[{0:s}]=(", vCmdKey);
 		 nTextFormat::
 			 println(stdout, "[{0:s}]=({1:s})", fPairTextWithCode(dPathToInternal));
 		 nTextFormat::println(
@@ -98,12 +347,10 @@ static const tCmdTab cCmdTab{
 			 dPathToResource,
 			 nFileSystem::exists(dPathToResource)
 		 );
-		 nTextFormat::println(stdout, ")=[{0:s}]", vCmdKey);
 	 }},
 	{"tTextFormat",
-	 [](tCmdKey vCmdKey)
+	 []()
 	 {
-		 nTextFormat::println(stdout, "[{0:s}]=(", vCmdKey);
 		 nTextFormat::println(
 			 stdout,
 			 "[{0:s}]=({1:s})",
@@ -114,18 +361,39 @@ static const tCmdTab cCmdTab{
 			 "[{0:s}]=({1:s})",
 			 fPairTextWithCode(nTextFormat::format("{:.02f}", M_PI))
 		 );
-		 nTextFormat::println(stdout, ")=[{0:s}]", vCmdKey);
 	 }},
 	{
-		"tLoopInversion", [](tCmdKey vCmdKey)
+		"tLoopInversion", []()
 		{
-			nTextFormat::println(stdout, ")=[{0:s}]", vCmdKey);
 			for(unsigned vI = 2; vI > 0; --vI)
 			{
 				nTextFormat::println(stdout, "[I]=({})", vI);
 			}
-			nTextFormat::println(stdout, "[{0:s}]=(", vCmdKey);
 		}, },
+	{"tMakerOfNetwork",
+	 []()
+	 {
+     auto pGraphOfNetwork
+       = tMakerOfNetwork()
+       .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+       .fMakeLayer<tLayerOfNetworkActivTanh>()
+       .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+       .fMakeLayer<tLayerOfNetworkActivTanh>()
+       .fTakeGraph();
+     std::cout << *pGraphOfNetwork << std::endl;
+   }},
+	{"tSolutionOfXor",
+	 []()
+	 {
+     auto pGraphOfNetwork
+       = tMakerOfNetwork()
+       .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+       .fMakeLayer<tLayerOfNetworkActivTanh>()
+       .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+       .fMakeLayer<tLayerOfNetworkActivTanh>()
+       .fTakeGraph();
+     std::cout << *pGraphOfNetwork << std::endl;
+   }},
 };
 //getters
 sf::Color fGetColor(float vValue, bool vFill, bool vSign)
@@ -152,52 +420,12 @@ sf::Color fGetColor(float vValue, bool vFill, bool vSign)
 	vPixel.vA = 0xff;
 	return sf::Color{vPixel.vF};
 }//fGetColor
-//actions
-void fProc(sf::RenderWindow &rWindow)
-{
-	for(sf::Event vEvent; rWindow.pollEvent(vEvent);)
-	{
-		switch(vEvent.type)
-		{
-		case sf::Event::Closed:
-		{
-			rWindow.close();
-		}
-		case sf::Event::Resized:
-		{
-			continue;
-		}
-		case sf::Event::TextEntered:
-		{
-			continue;
-		}
-		case sf::Event::KeyPressed:
-		{
-			continue;
-		}
-		case sf::Event::KeyReleased:
-		{
-			continue;
-		}
-		default: continue;
-		}
-	}//events
-}//fProc
+ //actions
 void fDraw(sf::RenderWindow &rWindow, const tDrawList &rDrawList)
 {
-	rWindow.clear();
-	for(tDrawIter vDrawIter: rDrawList)
-	{
-		rWindow.draw(*vDrawIter);
-	}
-	rWindow.display();
 }//fDraw
-void fMain()
+int fMain()
 {
-	std::random_device							 vRandomDevice;
-	std::mt19937_64									 vRandomEngine(vRandomDevice());
-	std::uniform_real_distribution<> vRandomNorm(-1.0, +1.0);
-	std::uniform_int_distribution<>	 vRandomBool(0, 1);
 	//filesystem
 	nFileSystem::current_path(dPathToInternal);
 	fThrowIfNot(
@@ -212,38 +440,6 @@ void fMain()
 			"failed to find the resource path: {0}", dPathToResource
 		))
 	);
-	//neural network
-	tNeuronGraph vNGraph{
-		{0, 1}, //input
-		tNeuronLayer(8), //hidden
-		tNeuronLayer(4), //hidden
-		tNeuronLayer(8), //hidden
-		{0.0}, //output
-	};
-	nTextFormat::println(stderr, "[NeuronGraph]=({0})", vNGraph);
-	tWeightGraph vWGraph;
-  tWeightArray vWError;
-	size_t			 vWLayerCount = vNGraph.empty() ? 0 : ((vNGraph.size()) - 1);
-	for(size_t vLIndex = 0; vLIndex < vWLayerCount; vLIndex++)
-	{
-		vWGraph.push_back({});
-		auto &rWLayer	 = vWGraph.back();
-		auto &rNLayerO = vNGraph[vLIndex + 1];
-		auto &rNLayerI = vNGraph[vLIndex];
-		for(size_t vAIndex = 0; vAIndex < rNLayerI.size(); vAIndex++)
-		{
-			rWLayer.push_back({});
-			tWeightArray &rWArray = rWLayer.back();
-			for(size_t vWIndex = 0; vWIndex < rNLayerO.size(); vWIndex++)
-			{
-				rWArray.push_back(vRandomNorm(vRandomEngine));
-			}//create weight from each input into each output
-			continue;
-		}//create array of weights from each input into each output
-		continue;
-	}//create weight layer between each neuron layer
-  vWError.resize(vWGraph.back().size());
-	nTextFormat::println(stderr, "[WeightGraph]=({0})", vWGraph);
 	//window
 	const sf::VideoMode				vVideoMode(1'024, 1'024, 32);//sx,sy,bpp
 	const auto								cStyle = sf::Style::Default; //bar|resize|close
@@ -258,114 +454,12 @@ void fMain()
 	vWindowSizeHalf.y = static_cast<float>(vWindowSizeFull.y) / 2.0;
 	//visual
 	tDrawList vDrawList;
-	//-//build graphs
-	tShapeGraph vSGraph;
-	tLabelGraph vLGraph;
-	auto				pFont = std::make_shared<sf::Font>();
+	auto			pFont = std::make_shared<sf::Font>();
 	fThrowIfNot(
 		pFont->loadFromFile(dPathToResource "/kongtext.ttf"),
 		std::runtime_error("failed font loading")
 	);
-	auto vSStepX = vWindowSizeFull.x / (float)(vNGraph.size());
-	for(size_t vLIndex = 0; vLIndex < vNGraph.size(); vLIndex++)
-	{
-		auto &rNLayer = vNGraph[vLIndex];
-		vSGraph.push_back({});
-		auto &rSLayer = vSGraph.back();
-		vLGraph.push_back({});
-		auto &rLLayer = vLGraph.back();
-		auto	vSStepY = vWindowSizeFull.y / (float)(rNLayer.size());
-		for(size_t vNIndex = 0; vNIndex < rNLayer.size(); vNIndex++)
-		{
-			tNeuronValue &rNValue = rNLayer[vNIndex];
-			//shape
-			auto vRadius = vWindowSizeFull.x;
-			vRadius /= (2 * vNGraph.size() * rNLayer.size());
-			auto pSValue = std::make_shared<sf::CircleShape>(vRadius);
-			pSValue->setOrigin(vRadius, vRadius);
-			auto vCoord = vWindowSizeHalf;
-			vCoord.x
-				+= vSStepX * ((float)vLIndex + 0.375 - ((float)(vNGraph.size()) / 2.0));
-			vCoord.y
-				+= vSStepY * ((float)vNIndex + 0.5 - ((float)(rNLayer.size()) / 2.0));
-			pSValue->setPosition(vCoord);
-			rSLayer.push_back(pSValue);
-			pSValue->setOutlineColor(fGetColor(rNValue, 0, 0));
-			pSValue->setOutlineThickness(1.0);
-			pSValue->setFillColor(fGetColor(rNValue, 1, 0));
-			//label
-			auto pLValue = std::make_shared<sf::Text>();
-			pLValue->setString(nTextFormat::format("{0:.2f}", rNValue));
-			pLValue->setFont(*pFont);
-			pLValue->setCharacterSize(vRadius / 4.0);
-			pLValue->setPosition(vCoord);
-			auto vLRect			= pLValue->getGlobalBounds();
-			auto vLSizeFull = vLRect.getSize();
-			auto vLSizeHalf = vLSizeFull;
-			vLSizeHalf.x /= 2.0;
-			vLSizeHalf.y /= 2.0;
-			pLValue->setOrigin(vLSizeHalf);
-			pLValue->setOutlineColor(fGetColor(rNValue, 1, 0));
-			pLValue->setOutlineThickness(1.0);
-			pLValue->setFillColor(fGetColor(rNValue, 0, 0));
-			rLLayer.push_back(pLValue);
-		}
-		continue;
-	}//create neuron shapes and labels
-	tJointGraph vJGraph;
-	for(size_t vLIndex = 0; vLIndex < vWGraph.size(); vLIndex++)
-	{
-		vJGraph.push_back({});
-		tJointLayer	 &rJLayer	 = vJGraph.back();
-		tShapeLayer	 &rSLayerI = vSGraph[vLIndex];
-		tShapeLayer	 &rSLayerO = vSGraph[vLIndex + 1];
-		tWeightLayer &rWLayer	 = vWGraph[vLIndex];
-		for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
-		{
-			rJLayer.push_back({});
-			tJointArray	 &rJArray	 = rJLayer.back();
-			tShapeValue		pSValueI = rSLayerI[vAIndex];
-			sf::Vector2f	vSPointI = pSValueI->getPosition();
-			tWeightArray &rWArray	 = rWLayer[vAIndex];
-			for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
-			{
-				tWeightValue &rWValue = rWArray[vWIndex];
-				//joint
-				rJArray.push_back(std::make_shared<sf::RectangleShape>());
-				tJointValue	 pJValue		 = rJArray.back();
-				tShapeValue	 pSValueO		 = rSLayerO[vWIndex];
-				sf::Vector2f vSPointO		 = pSValueO->getPosition();
-				float				 vOpposite	 = vSPointO.y - vSPointI.y;
-				float				 vAdjacent	 = vSPointO.x - vSPointI.x;
-				float				 vHypotenuse = 0.0;
-				vHypotenuse += (vOpposite * vOpposite);
-				vHypotenuse += (vAdjacent * vAdjacent);
-				vHypotenuse = std::sqrt(vHypotenuse);
-				float vSin	= vOpposite / vHypotenuse;
-				float vArc	= std::asinf(vSin);
-				float vDeg	= vArc * 180.0 / M_PI;
-				pJValue->setSize({vHypotenuse, 8.0});
-				pJValue->setOrigin({0.0, 8.0});
-				pJValue->setPosition(pSValueI->getPosition());
-				pJValue->setRotation(vDeg);
-				pJValue->setOutlineColor(fGetColor(rWValue, 0, 1));
-				pJValue->setOutlineThickness(1.0);
-				pJValue->setFillColor(fGetColor(rWValue, 1, 1));
-				vDrawList.push_back(pJValue);
-			}
-		}
-	}//create weight joints
-	for(size_t vLIndex = 0; vLIndex < vNGraph.size(); vLIndex++)
-	{
-		auto &rNLayer = vNGraph[vLIndex];
-		auto &rSLayer = vSGraph[vLIndex];
-		auto &rLLayer = vLGraph[vLIndex];
-		for(size_t vNIndex = 0; vNIndex < rNLayer.size(); vNIndex++)
-		{
-			vDrawList.push_back(rSLayer[vNIndex]);
-			vDrawList.push_back(rLLayer[vNIndex]);
-		}
-	}//push neuron shapes and labels into the draw list after the weight joints
+	//timing
 	sf::Clock vClock;
 	sf::Time	vTimePNow = vClock.getElapsedTime();
 	sf::Time	vTimePWas = vTimePNow;
@@ -373,6 +467,15 @@ void fMain()
 	float			vTimeFWas = vTimeFNow;
 	unsigned	vTimeIWas = static_cast<unsigned>(vTimeFWas);
 	unsigned	vTimeINow = static_cast<unsigned>(vTimeFNow);
+	//intel
+	auto pGraphOfNetwork
+		= tMakerOfNetwork()
+				.fMakeLayer<tLayerOfNetworkDense>(2, 3)
+				.fMakeLayer<tLayerOfNetworkActivTanh>()
+				.fMakeLayer<tLayerOfNetworkDense>(3, 1)
+				.fMakeLayer<tLayerOfNetworkActivTanh>()
+				.fTakeGraph();
+	//mainloop
 	while(vWindow.isOpen())
 	{
 		//timing
@@ -382,88 +485,33 @@ void fMain()
 		vTimeFWas					 = vTimeFNow;
 		vTimeFNow					 = vTimePNow.asSeconds();
 		unsigned vTimeINow = static_cast<unsigned>(vTimeFNow);
-		if(static_cast<sf::Uint32>(vTimePNow.asMilliseconds()) % 500 == 0)
+		//intel
+		if(static_cast<unsigned>(vTimePNow.asMilliseconds()) % 500 == 0)
 		{
-			//neural-network-training
-			auto vInputL	= static_cast<bool>(vRandomBool(vRandomEngine));
-			auto vInputR	= static_cast<bool>(vRandomBool(vRandomEngine));
-			vNGraph.front()[0] = vInputL;
-			vNGraph.front()[1] = vInputR;
-			//forward propagation
-			for(size_t vLIndex = 0; vLIndex < vWGraph.size(); vLIndex++)
-			{
-				auto &rJLayer	 = vJGraph[vLIndex];		//joint
-				auto &rWLayer	 = vWGraph[vLIndex];		//weight
-				auto &rNLayerI = vNGraph[vLIndex + 0];//neuron input
-				auto &rSLayerI = vSGraph[vLIndex + 0];//shape input
-				auto &rLLayerI = vLGraph[vLIndex + 0];//label input
-				auto &rNLayerO = vNGraph[vLIndex + 1];//neuron output
-				auto &rSLayerO = vSGraph[vLIndex + 1];//shape output
-				auto &rLLayerO = vLGraph[vLIndex + 1];//label output
-				std::fill(rNLayerO.begin(), rNLayerO.end(), tNeuronValue{0});
-				for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
-				{
-					auto &rNValueI = rNLayerI[vAIndex];//neuron input
-					auto &rSValueI = rSLayerI[vAIndex];//shape input
-					rSValueI->setOutlineColor(fGetColor(rNValueI, 0, 0));
-					rSValueI->setFillColor(fGetColor(rNValueI, 1, 0));
-					auto &rLValueI = rLLayerI[vAIndex];//label input
-					rLValueI->setString(nTextFormat::format("{:.2f}", rNValueI));
-					rLValueI->setOutlineColor(fGetColor(rNValueI, 1, 0));
-					rLValueI->setFillColor(fGetColor(rNValueI, 0, 0));
-					auto &rWArray = rWLayer[vAIndex];//weight
-					auto &rJArray = rJLayer[vAIndex];//joint
-					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
-					{
-						auto &rWValue = rWArray[vWIndex];//weight
-						auto &rJValue = rJArray[vWIndex];//joint
-						rJValue->setOutlineColor(fGetColor(rWValue, 0, 1));
-						rJValue->setFillColor(fGetColor(rWValue, 1, 1));
-						auto &rNValueO = rNLayerO[vWIndex];//neuron output
-						rNValueO			 = rNValueO + (rNValueI * rWValue);
-					}//activate neurons on the next layer using their weights
-					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
-					{
-						auto &rNValueO = rNLayerO[vWIndex];//neuron output
-						rNValueO			 = 1.0 / (1.0 + std::exp(-rNValueO));
-						auto &rSValueO = rSLayerO[vWIndex];//shape output
-						rSValueO->setOutlineColor(fGetColor(rNValueO, 0, 0));
-						rSValueO->setFillColor(fGetColor(rNValueO, 1, 0));
-						auto &rLValueO = rLLayerO[vWIndex];//neuron output
-						rLValueO->setString(nTextFormat::format("{:.2f}", rNValueO));
-						rLValueO->setOutlineColor(fGetColor(rNValueO, 1, 0));
-						rLValueO->setFillColor(fGetColor(rNValueO, 0, 0));
-					}//apply activation function
-					continue;
-				}//
-				continue;
-			}//forward propagation
-			auto vOutput = vNGraph.back()[0];
-			auto vAnswer = static_cast<float>(vInputL ^ vInputR);
-			auto vEValue = vAnswer - vOutput;//how bad is the answer
-			//backward propagation
-			for(size_t vLIndex = vWLayerCount; vLIndex > 0; vLIndex--)
-			{
-				auto &rWLayer = vWGraph[vLIndex - 1];
-				for(size_t vAIndex = 0; vAIndex < rWLayer.size(); vAIndex++)
-				{
-					auto &rWArray = rWLayer[vAIndex];
-					for(size_t vWIndex = 0; vWIndex < rWArray.size(); vWIndex++)
-					{
-						auto &rWValue = rWArray[vWIndex];
-						auto	vOffset = vEValue / rWValue;
-						vOffset				= std::isnan(vOffset) ? (vEValue / 0.001) : vOffset;
-						rWValue				= rWValue - vOffset;
-						continue;
-					}//
-					continue;
-				}//
-				continue;
-			}//backward propagation
-			fProc(vWindow);
-			fDraw(vWindow, vDrawList);
+			auto vInputL = static_cast<bool>(vRandomBool(vRandomEngine));
+			auto vInputR = static_cast<bool>(vRandomBool(vRandomEngine));
+			auto vAnswer = tVector{vInputL ^ vInputR};
+			//pGraphOfNetwork->fLearn({vInputL, vInputR}, vAnswer);
+		}//intel
+		sf::Event vWindowEvent;
+		vWindow.pollEvent(vWindowEvent);
+		switch(vWindowEvent.type)
+		{
+		case sf::Event::Closed:
+		{
+			vWindow.close();
+			break;
 		}
-	}//loop
+		default: break;
+		}
+		vWindow.clear();
+		for(tDrawIter vDrawIter: vDrawList)
+		{
+			vWindow.draw(*vDrawIter);
+		}
+		vWindow.display();
+	}//mainloop
+	return EXIT_SUCCESS;
 }//fMain
 int main(int vArgC, char *vArgV[])
 {
@@ -475,7 +523,9 @@ int main(int vArgC, char *vArgV[])
 		}
 		else if(auto vI = cCmdTab.find(vArgV[1]); vI != cCmdTab.end())
 		{
-			vI->second(vI->first);
+		 nTextFormat::println(stdout, "[{0:s}]=(", vI->first);
+			vI->second();
+		 nTextFormat::println(stdout, ")=[{0:s}]", vI->first);
 		}
 		else
 		{
