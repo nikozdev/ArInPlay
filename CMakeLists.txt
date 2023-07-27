@@ -71,6 +71,10 @@ target_link_libraries(${vNameOfExec} PRIVATE sfml-graphics)
 mark_as_advanced(FORCE SFML_DOC_DIR)
 mark_as_advanced(FORCE SFML_DIR)
 
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+target_link_libraries(${vNameOfExec} PRIVATE Eigen3::Eigen)
+mark_as_advanced(FORCE Eigen3_DIR)
+
 # test
 
 include(CTest)
