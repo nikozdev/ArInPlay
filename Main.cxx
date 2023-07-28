@@ -24,8 +24,12 @@
 #include <array>
 #include <vector>
 #include <unordered_map>
+//-//execution
+#include <future>
+#include <thread>
 //-//debug
 #include <exception>
+#include <chrono>
 //-//graphics
 #include <SFML/Graphics.hpp>
 //imports
@@ -240,15 +244,17 @@ public://actions
 
 	inline void fAhead(tVec &vIputVec)
 	{
-		for(size_t vIndex = 0; vIndex < vArray.size(); vIndex++)
+		for(size_t vIndex = 0; vIndex < vArray.size();)
 		{
 			vArray[vIndex]->fAhead(vIputVec);
+			vIndex++;
 		}
 	}//fAhead
 	inline void fAback(tVec &vOput)
 	{
-		for(size_t vIndex = vArray.size(); --vIndex > 0; vIndex)
+		for(size_t vIndex = vArray.size(); vIndex > 0;)
 		{
+			vIndex--;
 			vArray[vIndex]->fAback(vOput);
 		}
 	}//fAback
@@ -359,6 +365,176 @@ static const tCmdTab cCmdTab{
 			 nFileSystem::exists(dPathToResource)
 		 );
 	 }},
+	{"tFileReaderPushback",
+	 []()
+	 {
+		 auto vTimeSince = std::chrono::high_resolution_clock::now();
+		 auto vDataPath	 = dPathToResource "/mnist-train-images.idx3-ubyte";
+		 auto vDataFile	 = nFileSystem::ifstream(vDataPath, std::ios::binary);
+		 fThrowIfNot(
+			 vDataFile.is_open(),
+			 std::logic_error(
+				 nTextFormat::format("failed to load the file: {}", vDataPath)
+			 )
+		 );
+		 auto vDataPack = std::vector<unsigned char>();
+		 for(unsigned char vDataItem; !vDataFile.eof(); vDataFile >> vDataItem)
+		 {
+			 vDataPack.push_back(vDataItem);
+		 }
+		 auto vTimeUntil = std::chrono::high_resolution_clock::now();
+		 auto vTimeTaken = vTimeUntil - vTimeSince;
+		 nTextFormat::print(
+			 stdout,
+			 "[TimeTaken]=(\n"
+			 "[nanos]=({:L})"
+			 "[micro]=({:L})"
+			 "[milli]=({:L})"
+			 "[secon]=({:L})"
+			 ")=[TimeTaken]\n"
+			 "[Data]=(\n"
+			 "[Size]=({:L})"
+			 ")=[Data]\n",
+			 duration_cast<std::chrono::nanoseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::microseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::milliseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::seconds>(vTimeTaken).count(),
+			 vDataPack.size()
+		 );
+	 }},
+	{"tFileReaderIterator",
+	 []()
+	 {
+		 auto vTimeSince = std::chrono::high_resolution_clock::now();
+		 auto vDataPath	 = dPathToResource "/mnist-train-images.idx3-ubyte";
+		 auto vDataFile	 = nFileSystem::ifstream(vDataPath, std::ios::binary);
+		 fThrowIfNot(
+			 vDataFile.is_open(),
+			 std::logic_error(
+				 nTextFormat::format("failed to load the file: {}", vDataPath)
+			 )
+		 );
+		 auto vDataPack = std::vector<unsigned char>(
+			 std::istreambuf_iterator<decltype(vDataFile)::char_type>(vDataFile),
+			 std::istreambuf_iterator<decltype(vDataFile)::char_type>()
+		 );
+		 auto vTimeUntil = std::chrono::high_resolution_clock::now();
+		 auto vTimeTaken = vTimeUntil - vTimeSince;
+		 nTextFormat::print(
+			 stdout,
+			 "[TimeTaken]=(\n"
+			 "[nanos]=({:L})"
+			 "[micro]=({:L})"
+			 "[milli]=({:L})"
+			 "[secon]=({:L})"
+			 ")=[TimeTaken]\n"
+			 "[Data]=(\n"
+			 "[Size]=({:L})"
+			 ")=[Data]\n",
+			 duration_cast<std::chrono::nanoseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::microseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::milliseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::seconds>(vTimeTaken).count(),
+			 vDataPack.size()
+		 );
+	 }},
+	{"tFileReaderPreallocSingle",
+	 []()
+	 {
+		 auto vTimeSince = std::chrono::high_resolution_clock::now();
+		 auto vDataPath	 = dPathToResource "/mnist-train-images.idx3-ubyte";
+		 auto vDataFile	 = nFileSystem::ifstream(vDataPath, std::ios::binary);
+		 fThrowIfNot(
+			 vDataFile.is_open(),
+			 std::logic_error(
+				 nTextFormat::format("failed to load the file: {}", vDataPath)
+			 )
+		 );
+		 size_t vDataSize = vDataFile.seekg(0, std::ios::end).tellg();
+		 auto		vDataPack = std::vector<unsigned char>(vDataSize);
+		 vDataFile.seekg(0, std::ios::beg);
+		 for(size_t vI = 0; vI < vDataSize; vI++)
+		 {
+			 vDataFile >> vDataPack[vI];
+		 }
+		 auto vTimeUntil = std::chrono::high_resolution_clock::now();
+		 auto vTimeTaken = vTimeUntil - vTimeSince;
+		 nTextFormat::print(
+			 stdout,
+			 "[TimeTaken]=(\n"
+			 "[nanos]=({:L})"
+			 "[micro]=({:L})"
+			 "[milli]=({:L})"
+			 "[secon]=({:L})"
+			 ")=[TimeTaken]\n"
+			 "[Data]=(\n"
+			 "[Size]=({:L})"
+			 ")=[Data]\n",
+			 duration_cast<std::chrono::nanoseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::microseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::milliseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::seconds>(vTimeTaken).count(),
+			 vDataPack.size()
+		 );
+	 }},
+	{"tFileReaderPreallocDouble",
+	 []()
+	 {
+		 auto vTimeSince = std::chrono::high_resolution_clock::now();
+		 auto vDataPath	 = dPathToResource "/mnist-train-images.idx3-ubyte";
+		 auto vDataFile0 = nFileSystem::ifstream(vDataPath, std::ios::binary);
+		 auto vDataFile1 = nFileSystem::ifstream(vDataPath, std::ios::binary);
+		 fThrowIfNot(
+			 vDataFile0.is_open() && vDataFile1.is_open(),
+			 std::logic_error(
+				 nTextFormat::format("failed to load the file: {}", vDataPath)
+			 )
+		 );
+		 size_t vDataSize = vDataFile0.seekg(0, std::ios::end).tellg();
+		 auto		vDataPack = std::vector<unsigned char>(vDataSize);
+		 size_t vDataHalf = vDataSize >> 1;
+		 vDataFile0.seekg(0, std::ios::beg);
+		 vDataFile1.seekg(vDataHalf, std::ios::beg);
+		 std::thread vFlow1(
+			 [&]()
+			 {
+				 for(size_t vI = 0; vI < vDataHalf; vI++)
+				 {
+					 vDataFile0 >> vDataPack[vI];
+				 }
+			 }
+		 );
+		 std::thread vFlow2(
+			 [&]()
+			 {
+				 for(size_t vI = vDataHalf; !vDataFile1.eof(); vI++)
+				 {
+					 vDataFile1 >> vDataPack[vI];
+				 }
+			 }
+		 );
+		 vFlow1.join();
+		 vFlow2.join();
+		 auto vTimeUntil = std::chrono::high_resolution_clock::now();
+		 auto vTimeTaken = vTimeUntil - vTimeSince;
+		 nTextFormat::print(
+			 stdout,
+			 "[TimeTaken]=(\n"
+			 "[nanos]=({:L})"
+			 "[micro]=({:L})"
+			 "[milli]=({:L})"
+			 "[secon]=({:L})"
+			 ")=[TimeTaken]\n"
+			 "[Data]=(\n"
+			 "[Size]=({:L})"
+			 ")=[Data]\n",
+			 duration_cast<std::chrono::nanoseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::microseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::milliseconds>(vTimeTaken).count(),
+			 duration_cast<std::chrono::seconds>(vTimeTaken).count(),
+			 vDataPack.size()
+		 );
+	 }},
 	{"tTextFormat",
 	 []()
 	 {
@@ -394,18 +570,39 @@ static const tCmdTab cCmdTab{
 		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
 		 std::clog << *pGraphOfNetwork << ")" << std::endl;
 	 }},
+	{"tMatrix",
+	 []()
+	 {
+		 tMat vM0(2, 2);
+		 vM0(0, 0) = 2.0;
+		 vM0(1, 1) = 2.0;
+		 tMat vM1(2, 2);
+		 vM1(0, 0) = 4.0;
+		 vM1(1, 0) = 4.0;
+		 std::clog << vM0 << std::endl << "*" << std::endl << vM1 << std::endl;
+		 std::clog << "=" << std::endl << vM0 * vM1 << std::endl << std::endl;
+		 std::clog << vM1 << std::endl << "*" << std::endl << vM0 << std::endl;
+		 std::clog << "=" << std::endl << vM1 * vM0 << std::endl << std::endl;
+		 tVec vV0(2);
+		 std::clog << vM0 << std::endl << "*" << std::endl << vV0 << std::endl;
+		 std::clog << "=" << std::endl << vM0 * vV0 << std::endl << std::endl;
+		 std::clog << vV0 << std::endl << "*" << std::endl << vM1 << std::endl;
+		 std::clog << "=" << std::endl << vV0 * vM1 << std::endl << std::endl;
+	 }},
 	{"tSolutionOfXor",
 	 []()
 	 {
 		 auto pGraphOfNetwork
 			 = tMakerOfNetwork()
-					 .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+					 .fMakeLayer<tLayerOfNetworkDense>(2, 4)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+					 .fMakeLayer<tLayerOfNetworkDense>(4, 4)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(4, 1)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
 					 .fTakeGraph();
-		 size_t vCount = 1'000'000;
-		 for(size_t vIndex = 0; vIndex < vCount; vIndex++)
+		 size_t vCount = 1'000;
+		 for(size_t vIndex = 1; vIndex <= vCount; vIndex++)
 		 {
 			 auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
 			 auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
@@ -433,25 +630,6 @@ static const tCmdTab cCmdTab{
 				 std::clog << " = " << vInputV << " " << vAnswer << std::endl;
 			 }
 		 }
-	 }},
-	{"tMatrix",
-	 []()
-	 {
-		 tMat vM0(2, 2);
-		 vM0(0, 0) = 2.0;
-		 vM0(1, 1) = 2.0;
-		 tMat vM1(2, 2);
-		 vM1(0, 0) = 4.0;
-		 vM1(1, 0) = 4.0;
-		 std::clog << vM0 << std::endl << "*" << std::endl << vM1 << std::endl;
-		 std::clog << "=" << std::endl << vM0 * vM1 << std::endl << std::endl;
-		 std::clog << vM1 << std::endl << "*" << std::endl << vM0 << std::endl;
-		 std::clog << "=" << std::endl << vM1 * vM0 << std::endl << std::endl;
-		 tVec vV0(2);
-		 std::clog << vM0 << std::endl << "*" << std::endl << vV0 << std::endl;
-		 std::clog << "=" << std::endl << vM0 * vV0 << std::endl << std::endl;
-		 std::clog << vV0 << std::endl << "*" << std::endl << vM1 << std::endl;
-		 std::clog << "=" << std::endl << vV0 * vM1 << std::endl << std::endl;
 	 }},
 };
 //getters
