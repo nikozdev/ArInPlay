@@ -93,15 +93,26 @@ typedef class tLayerOfNetworkDense final: public tLayerOfNetwork
 {
 public://codetor
 
-	tLayerOfNetworkDense(size_t vIputDim, size_t vOputDim)
-		: vNodeVec(vIputDim), vEdgeMat(vOputDim, vIputDim), vBiasVec(vOputDim)
+	tLayerOfNetworkDense(size_t vIputDim, size_t vOputDim, tNum vRateNum = 0.1)
+		: vEdgeMat(vOputDim, vIputDim)
+		, vNodeVec(vIputDim)
+		, vBiasVec(vOputDim)
+		, vRateNum(vRateNum)
 	{
 		for(size_t vY = 0; vY < vOputDim; vY++)
 		{
+#if 1
 			vBiasVec[vY] = vRandNorm(vRandEngine);
+#else
+			vBiasVec[vY] = 0.5;
+#endif
 			for(size_t vX = 0; vX < vIputDim; vX++)
 			{
+#if 1
 				vEdgeMat(vY, vX) = vRandNorm(vRandEngine);
+#else
+				vEdgeMat(vY, vX) = 0.5;
+#endif
 			}
 		}
 	}
@@ -111,13 +122,12 @@ public://actions
 	virtual void fAhead(tVec &vIputVec) override
 	{
 		vNodeVec = vIputVec;
-		vIputVec = (vEdgeMat * vIputVec) + vBiasVec;
+		vIputVec = vEdgeMat * vNodeVec + vBiasVec;
 	}//fAhead
-
 	virtual void fAback(tVec &vOputVec) override
-	{
-		vEdgeMat = vEdgeMat - ((vOputVec * vNodeVec.transpose()) * 0.1);
-		vBiasVec = vBiasVec - ((vOputVec)*0.1);
+	{//transposition makes vector/matrix shapes matching
+		vEdgeMat = vEdgeMat - vOputVec * vRateNum * vNodeVec.transpose();
+		vBiasVec = vBiasVec - vOputVec * vRateNum;
 		vOputVec = vEdgeMat.transpose() * vOputVec;
 	}//fAback
 
@@ -125,12 +135,12 @@ public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
 	{
-		vStream << "[NodeVec]=(" << std::endl;
-		vStream << vNodeVec << std::endl;
-		vStream << ")=[NodeVec]" << std::endl;
 		vStream << "[EdgeMat]=(" << std::endl;
 		vStream << vEdgeMat << std::endl;
 		vStream << ")=[EdgeMat]" << std::endl;
+		vStream << "[NodeVec]=(" << std::endl;
+		vStream << vNodeVec << std::endl;
+		vStream << ")=[NodeVec]" << std::endl;
 		vStream << "[BiasVec]=(" << std::endl;
 		vStream << vBiasVec << std::endl;
 		vStream << ")=[BiasVec]" << std::endl;
@@ -139,36 +149,33 @@ public://operats
 
 private://datadef
 
-	tVec vNodeVec;//neuron vector
-
 	tMat vEdgeMat;//weight matrix
+	tVec vNodeVec;//neuron vector
 	tVec vBiasVec;//bias vector
+
+	tNum vRateNum;//learning rate
 
 } tLayerOfNetworkDense;
 /* type of layer of network activation */
-typedef class tLayerOfNetworkActiv: public tLayerOfNetwork
+template<auto fActiv, auto fPrime>
+class tLayerOfNetworkActiv final: public tLayerOfNetwork
 {
-public://typedef
-
-	using tActiv = std::function<void(tVec &)>;
-
-public://codetor
-
-	tLayerOfNetworkActiv(const tActiv &fActiv, const tActiv &fPrime)
-		: fActiv{fActiv}, fPrime{fPrime}
-	{
-	}
-
 public://actions
 
 	virtual void fAhead(tVec &vIputVec) override
 	{
 		vNodeVec = vIputVec;
-		fActiv(vIputVec);
+		for(auto &vIputNum: vIputVec)
+		{
+			vIputNum = fActiv(vIputNum);
+		}
 	}//fAhead
 	virtual void fAback(tVec &vOputVec) override
 	{
-		fPrime(vNodeVec);
+		for(auto &vNodeNum: vNodeVec)
+		{
+			vNodeNum = fPrime(vNodeNum);
+		}
 		vOputVec = vOputVec.array() * vNodeVec.array();
 	}//fAback
 
@@ -186,43 +193,47 @@ private://datadef
 
 	tVec vNodeVec;
 
-	tActiv fActiv, fPrime;
-
-} tLayerOfNetworkActiv;
-typedef class tLayerOfNetworkActivTanh final: public tLayerOfNetworkActiv
-{
-public://codetor
-
-	tLayerOfNetworkActivTanh(): tLayerOfNetworkActiv(fActivVec, fPrimeVec)
+};//tLayerOfNetworkActiv
+/* type of layer of network activation sigmoid
+ * this one actually sucks in comparison with hyperbolic tangent
+ * > it needs 100 times more iterations to start solving xor
+ */
+typedef tLayerOfNetworkActiv<
+	[](tNum vNum)
 	{
-	}
-
-public://actions
-
-	static tNum fActivNum(tNum vIputNum)
+		return 1.0 / (1.0 + std::exp(-vNum));
+		//return 1.0 * std::tanh(vNum / 2.0) / 2.0;
+	},
+	[](tNum vNum)
 	{
-		return std::tanh(vIputNum);
-	}//fActivNum
-	static void fActivVec(tVec &vIputVec)
+		//return (1.0 - std::pow(std::tanh(0.5 * vNum), 2.0)) / 2.0;
+		tNum vSig = 1.0 / (1.0 + std::exp(-vNum));
+		return vSig * (1.0 - vSig);
+		//return (std::exp(-vNum)) / (1.0 + std::exp(-vNum));
+	}>
+	tLayerOfNetworkActivSigma;
+/* type of layer of network activation tangent hyperbolic */
+typedef tLayerOfNetworkActiv<
+	[](tNum vNum)
 	{
-		for(auto &vIputNum: vIputVec)
-		{
-			vIputNum = fActivNum(vIputNum);
-		}
-	}//fActivVec
-	static tNum fPrimeNum(tNum vOputNum)
+		return std::tanh(vNum);
+	},
+	[](tNum vNum)
 	{
-		return (1 - std::pow(std::tanh(vOputNum), 2.0));
-	}//fPrimeNum
-	static void fPrimeVec(tVec &vOputVec)
+		return (1.0 - std::pow(std::tanh(vNum), 2.0));
+	}>
+	tLayerOfNetworkActivTanh;
+/* type of layer of network activation rectangular linear unit */
+typedef tLayerOfNetworkActiv<
+	[](tNum vNum)
 	{
-		for(auto &vOputNum: vOputVec)
-		{
-			vOputNum = fPrimeNum(vOputNum);
-		}
-	}//fPrimeVec
-
-} tLayerOfNetworkActivTanh;
+		return vNum > 0.0 ? vNum : vNum * 0.1;
+	},
+	[](tNum vNum)
+	{
+		return vNum > 0.0 ? 1.0 : 0.1;
+	}>
+	tLayerOfNetworkActivRelu;
 /* type of graph of neural network */
 typedef class tGraphOfNetwork final
 {
@@ -261,7 +272,8 @@ public://actions
 	inline void fLearn(tVec &vIputVec, const tVec &vTrueVec)
 	{
 		fAhead(vIputVec);
-		tVec vCostVec = (2 * (vIputVec - vTrueVec)).colwise().mean();
+		tVec vCostVec = 2.0 * (vIputVec - vTrueVec);//calculate suqared error prime
+		vCostVec			= vCostVec / static_cast<tNum>(vIputVec.size());//make it mean
 		fAback(vCostVec);
 	}//fLearn
 
@@ -342,7 +354,56 @@ using tJointLayer = std::vector<tJointArray>;
 using tShapeGraph = std::vector<tShapeLayer>;
 using tLabelGraph = std::vector<tLabelLayer>;
 using tJointGraph = std::vector<tJointLayer>;
-//consdef
+//getters
+sf::Color fGetColor(float vValue, bool vFill, bool vSign)
+{
+	typedef union tPixel
+	{
+		struct
+		{
+			sf::Uint8 vA, vB, vG, vR;
+		};
+		sf::Uint32 vF = 0x00'00'00'00;
+	} tPixel;
+	sf::Uint8 vColorBase = vSign ? ((vValue + 1.0) * 60.0) : (vValue * 120.0);
+	tPixel		vPixel;
+	vPixel.vR = vColorBase;
+	vPixel.vG = vColorBase;
+	vPixel.vB = vColorBase;
+	if(!vFill)
+	{
+		vPixel.vR = 0xff - vPixel.vR;
+		vPixel.vG = 0xff - vPixel.vG;
+		vPixel.vB = 0xff - vPixel.vB;
+	}
+	vPixel.vA = 0xff;
+	return sf::Color{vPixel.vF};
+}//fGetColor
+template<typename tVal>
+tVal fRead(nFileSystem::ifstream &vFile)
+{
+	tVal					 vVal;
+	constexpr auto cSize = sizeof(tVal);
+	vFile.read(reinterpret_cast<char *>(&vVal), cSize);
+#ifdef __APPLE__
+	static_assert(CHAR_BIT == 8, "CHAR_BIT != 8");
+	union
+	{
+		tVal		vFull;
+		uint8_t vByte[cSize];
+	} vSource, vTarget;
+	//convert
+	vSource.vFull = vVal;
+	for(size_t vI = 0; vI < cSize; vI++)
+	{
+		vTarget.vByte[vI] = vSource.vByte[cSize - vI - 1];
+	}
+	return vTarget.vFull;
+#else
+	return vVal;
+#endif
+}//fRead
+//testing
 static const tCmdTab cCmdTab{
 	{"tFileSystem",
 	 []()
@@ -377,8 +438,8 @@ static const tCmdTab cCmdTab{
 				 nTextFormat::format("failed to load the file: {}", vDataPath)
 			 )
 		 );
-		 auto vDataPack = std::vector<unsigned char>();
-		 for(unsigned char vDataItem; !vDataFile.eof(); vDataFile >> vDataItem)
+		 auto vDataPack = std::vector<uint8_t>();
+		 for(uint8_t vDataItem; !vDataFile.eof(); vDataFile >> vDataItem)
 		 {
 			 vDataPack.push_back(vDataItem);
 		 }
@@ -414,7 +475,7 @@ static const tCmdTab cCmdTab{
 				 nTextFormat::format("failed to load the file: {}", vDataPath)
 			 )
 		 );
-		 auto vDataPack = std::vector<unsigned char>(
+		 auto vDataPack = std::vector<uint8_t>(
 			 std::istreambuf_iterator<decltype(vDataFile)::char_type>(vDataFile),
 			 std::istreambuf_iterator<decltype(vDataFile)::char_type>()
 		 );
@@ -451,7 +512,7 @@ static const tCmdTab cCmdTab{
 			 )
 		 );
 		 size_t vDataSize = vDataFile.seekg(0, std::ios::end).tellg();
-		 auto		vDataPack = std::vector<unsigned char>(vDataSize);
+		 auto		vDataPack = std::vector<uint8_t>(vDataSize);
 		 vDataFile.seekg(0, std::ios::beg);
 		 for(size_t vI = 0; vI < vDataSize; vI++)
 		 {
@@ -491,7 +552,7 @@ static const tCmdTab cCmdTab{
 			 )
 		 );
 		 size_t vDataSize = vDataFile0.seekg(0, std::ios::end).tellg();
-		 auto		vDataPack = std::vector<unsigned char>(vDataSize);
+		 auto		vDataPack = std::vector<uint8_t>(vDataSize);
 		 size_t vDataHalf = vDataSize >> 1;
 		 vDataFile0.seekg(0, std::ios::beg);
 		 vDataFile1.seekg(vDataHalf, std::ios::beg);
@@ -562,10 +623,12 @@ static const tCmdTab cCmdTab{
 	 {
 		 auto pGraphOfNetwork
 			 = tMakerOfNetwork()
-					 .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+					 .fMakeLayer<tLayerOfNetworkDense>(0x40, 0x30)
+					 .fMakeLayer<tLayerOfNetworkActivSigma>()
+					 .fMakeLayer<tLayerOfNetworkDense>(0x30, 0x20)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(0x20, 0x10)
+					 .fMakeLayer<tLayerOfNetworkActivRelu>()
 					 .fTakeGraph();
 		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
 		 std::clog << *pGraphOfNetwork << ")" << std::endl;
@@ -596,12 +659,12 @@ static const tCmdTab cCmdTab{
 			 = tMakerOfNetwork()
 					 .fMakeLayer<tLayerOfNetworkDense>(2, 4)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(4, 4)
+					 .fMakeLayer<tLayerOfNetworkDense>(4, 2)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(4, 1)
+					 .fMakeLayer<tLayerOfNetworkDense>(2, 1)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
 					 .fTakeGraph();
-		 for(size_t vIndex = 1; vIndex <= 10'000; vIndex++)
+		 for(size_t vIndex = 1; vIndex <= 1'000; vIndex++)
 		 {
 			 auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
 			 auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
@@ -623,38 +686,199 @@ static const tCmdTab cCmdTab{
 			 vInputV[0] = vInputV[0] > 0.5 ? 1.0 : 0.0;
 			 nTextFormat::println("[{:d}^{:d}]={}", vInputL, vInputR, vInputV[0]);
 		 }
-	 }},
+	 }}, //tAiXorSolver
 	{"tAiDigitReader",
 	 []()
 	 {
-	 }},
+		 //timer
+		 auto vTimeSince = std::chrono::high_resolution_clock::now();
+		 //graph
+		 auto pGraphOfNetwork
+			 = tMakerOfNetwork()
+					 .fMakeLayer<tLayerOfNetworkDense>(28 * 28, 32)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(32, 16)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(16, 10)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fTakeGraph();
+		 try//learn
+		 {
+			 //image
+			 auto vLearnImageFile = nFileSystem::ifstream(
+				 dPathToResource "/mnist-train-images.idx3-ubyte", std::ios::binary
+			 );
+			 fThrowIfNot(
+				 vLearnImageFile.is_open(),
+				 std::logic_error("failed to load the mnist-train-images file")
+			 );
+			 //-//space
+			 vLearnImageFile.seekg(0, std::ios::end);
+			 size_t vLearnImageSpace = vLearnImageFile.tellg();
+			 nTextFormat::println(stdout, "[LearnImageSpace]={}", vLearnImageSpace);
+			 vLearnImageFile.seekg(4, std::ios::beg);
+			 //-//count
+			 auto vLearnImageCount = fRead<int32_t>(vLearnImageFile);
+			 //-//sizes
+			 nTextFormat::println(stdout, "[LearnImageCount]={}", vLearnImageCount);
+			 auto vLearnImageSizeX = fRead<int32_t>(vLearnImageFile);//rows
+			 nTextFormat::println(stdout, "[LearnImageSizeX]={}", vLearnImageSizeX);
+			 auto vLearnImageSizeY = fRead<int32_t>(vLearnImageFile);//cols
+			 nTextFormat::println(stdout, "[LearnImageSizeY]={}", vLearnImageSizeY);
+			 //label
+			 auto vLearnLabelFile = nFileSystem::ifstream(
+				 dPathToResource "/mnist-train-labels.idx1-ubyte", std::ios::binary
+			 );
+			 fThrowIfNot(
+				 vLearnLabelFile.is_open(),
+				 std::logic_error("failed to load the mnist-train-labels file")
+			 );
+			 //-//space
+			 vLearnLabelFile.seekg(0, std::ios::end);
+			 size_t vLearnLabelSpace = vLearnLabelFile.tellg();
+			 nTextFormat::println(stdout, "[LearnLabelsSpace]={}", vLearnLabelSpace);
+			 vLearnLabelFile.seekg(4, std::ios::beg);
+			 //-//count
+			 auto vLearnLabelCount = fRead<int32_t>(vLearnLabelFile);
+			 nTextFormat::println(stdout, "[LearnLabelCount]={}", vLearnLabelCount);
+			 //learning
+			 auto vTruth = tVec(10);					 //expected answer
+			 auto vError = tVec(vTruth.size());//cost from each invididual example
+			 auto vBatch = 10;								 //cost from a batch of examples
+			 //process
+			 for(size_t vIndex = 0;
+					 (vIndex < vLearnImageCount && vIndex < vLearnLabelCount)
+					 && (!vLearnImageFile.eof() && !vLearnLabelFile.eof());
+					 vIndex++)
+			 {
+				 auto vInput = tVec(vLearnImageSizeX * vLearnImageSizeY);
+				 for(size_t vY = 0; vY < vLearnImageSizeY; vY++)
+				 {
+					 for(size_t vX = 0; vX < vLearnImageSizeX; vX++)
+					 {
+						 auto vPixel		= fRead<uint8_t>(vLearnImageFile);
+						 auto vIndex		= vY * vLearnImageSizeX + vX;
+						 vInput[vIndex] = static_cast<tNum>(vPixel) / 255.0;
+					 }
+				 }
+				 std::fill(vTruth.begin(), vTruth.end(), 0.0);
+				 auto vDigit		= fRead<uint8_t>(vLearnLabelFile);
+				 vTruth[vDigit] = 1.0;
+#if 0
+				 pGraphOfNetwork->fAhead(vInput);
+				 vError
+					 = vError + (vInput - vTruth) * 2.0 / static_cast<tNum>(vTruth.size());
+				 if(vIndex % vBatch == 0)
+				 {
+					 vError = vError / static_cast<tNum>(vBatch);
+					 pGraphOfNetwork->fAback(vError);
+					 vError = tVec(vTruth.size());
+				 }
+#else
+				 pGraphOfNetwork->fLearn(vInput, vTruth);
+#endif
+				 auto vShowIndex = 10'000;
+				 if(vIndex % vShowIndex == 0)
+				 {
+					 nTextFormat::println(
+						 stdout,
+						 "[Learn]{}/{}",
+						 vIndex / vShowIndex,
+						 vLearnLabelCount / vShowIndex
+					 );
+				 }
+			 }
+		 }//learn
+		 catch(std::exception &vError)
+		 {
+			 nTextFormat::println(stderr, "failed learn process: {}", vError.what());
+			 return;
+		 }
+		 try//trial
+		 {
+			 //image
+			 auto vTrialImageFile = nFileSystem::ifstream(
+				 dPathToResource "/mnist-t10k-images.idx3-ubyte", std::ios::binary
+			 );
+			 fThrowIfNot(
+				 vTrialImageFile.is_open(),
+				 std::logic_error("failed to load the mnist-t10k-images file")
+			 );
+			 //-//space
+			 vTrialImageFile.seekg(0, std::ios::end);
+			 size_t vTrialImageSpace = vTrialImageFile.tellg();
+			 nTextFormat::println(stdout, "[TrialImageSpace]={}", vTrialImageSpace);
+			 vTrialImageFile.seekg(4, std::ios::beg);
+			 //-//count
+			 auto vTrialImageCount = fRead<int32_t>(vTrialImageFile);
+			 nTextFormat::println("[TrialImageCount]={}", vTrialImageCount);
+			 //-//sizes
+			 auto vTrialImageSizeX = fRead<int32_t>(vTrialImageFile);//rows
+			 nTextFormat::println("[TrialImageSizeX]={}", vTrialImageSizeX);
+			 auto vTrialImageSizeY = fRead<int32_t>(vTrialImageFile);//cols
+			 nTextFormat::println("[TrialImageSizeY]={}", vTrialImageSizeY);
+			 //label
+			 auto vTrialLabelFile = nFileSystem::ifstream(
+				 dPathToResource "/mnist-t10k-labels.idx1-ubyte", std::ios::binary
+			 );
+			 fThrowIfNot(
+				 vTrialLabelFile.is_open(),
+				 std::logic_error("failed to load the mnist-t10k-labels file")
+			 );
+			 //-//space
+			 vTrialLabelFile.seekg(0, std::ios::end);
+			 size_t vTrialLabelSpace = vTrialLabelFile.tellg();
+			 nTextFormat::println(stdout, "[TrialLabelSpace]={}", vTrialLabelSpace);
+			 vTrialLabelFile.seekg(4, std::ios::beg);
+			 //-//count
+			 auto vTrialLabelCount = fRead<int32_t>(vTrialLabelFile);
+			 nTextFormat::println(stdout, "[TrialLabelCount]={}", vTrialLabelCount);
+			 //process
+			 for(size_t vIndex = 0;
+					 (vIndex < vTrialImageCount && vIndex < vTrialLabelCount)
+					 && (!vTrialImageFile.eof() && !vTrialLabelFile.eof());
+					 vIndex++)
+			 {
+				 auto vInput = tVec(vTrialImageSizeX * vTrialImageSizeY);
+				 for(size_t vY = 0; vY < vTrialImageSizeY; vY++)
+				 {
+					 for(size_t vX = 0; vX < vTrialImageSizeX; vX++)
+					 {
+						 auto vPixel		= fRead<uint8_t>(vTrialImageFile);
+						 auto vIndex		= vY * vTrialImageSizeX + vX;
+						 vInput[vIndex] = static_cast<tNum>(vPixel) / 255.0;
+					 }
+				 }
+				 auto vLabel		= fRead<uint8_t>(vTrialLabelFile);
+				 auto vTruth		= tVec(10);
+				 vTruth[vLabel] = 1.0;
+				 pGraphOfNetwork->fAhead(vInput);
+				 if(vIndex % 1'000 == 0)
+				 {
+					 auto vTruthIndex = std::max_element(vTruth.begin(), vTruth.end());
+					 auto vTruthDigit = vTruthIndex - vTruth.begin();
+					 auto vInputIndex = std::max_element(vInput.begin(), vInput.end());
+					 auto vInputDigit = vInputIndex - vInput.begin();
+					 nTextFormat::println(
+						 stdout, "[Output] = {} [Answer] = {}", vInputDigit, vTruthDigit
+					 );
+				 }
+			 }
+		 }//trial
+		 catch(std::exception &vError)
+		 {
+			 nTextFormat::println(stderr, "failed trial process: {}", vError.what());
+			 return;
+		 }
+		 //timer
+		 auto vTimeUntil = std::chrono::high_resolution_clock::now();
+		 nTextFormat::println(
+			 "[TimeTaken][milli]={}",
+			 duration_cast<std::chrono::milliseconds>(vTimeUntil - vTimeSince).count()
+		 );
+	 }}, //tAiDigitReader
 };
-//getters
-sf::Color fGetColor(float vValue, bool vFill, bool vSign)
-{
-	typedef union tPixel
-	{
-		struct
-		{
-			sf::Uint8 vA, vB, vG, vR;
-		};
-		sf::Uint32 vF = 0x00'00'00'00;
-	} tPixel;
-	sf::Uint8 vColorBase = vSign ? ((vValue + 1.0) * 60.0) : (vValue * 120.0);
-	tPixel		vPixel;
-	vPixel.vR = vColorBase;
-	vPixel.vG = vColorBase;
-	vPixel.vB = vColorBase;
-	if(!vFill)
-	{
-		vPixel.vR = 0xff - vPixel.vR;
-		vPixel.vG = 0xff - vPixel.vG;
-		vPixel.vB = 0xff - vPixel.vB;
-	}
-	vPixel.vA = 0xff;
-	return sf::Color{vPixel.vF};
-}//fGetColor
- //actions
+//actions
 void fDraw(sf::RenderWindow &rWindow, const tDrawList &rDrawList)
 {
 }//fDraw
