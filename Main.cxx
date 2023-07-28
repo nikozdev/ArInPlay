@@ -589,7 +589,7 @@ static const tCmdTab cCmdTab{
 		 std::clog << vV0 << std::endl << "*" << std::endl << vM1 << std::endl;
 		 std::clog << "=" << std::endl << vV0 * vM1 << std::endl << std::endl;
 	 }},
-	{"tSolutionOfXor",
+	{"tAiXorSolver",
 	 []()
 	 {
 		 auto pGraphOfNetwork
@@ -601,35 +601,32 @@ static const tCmdTab cCmdTab{
 					 .fMakeLayer<tLayerOfNetworkDense>(4, 1)
 					 .fMakeLayer<tLayerOfNetworkActivTanh>()
 					 .fTakeGraph();
-		 size_t vCount = 1'000;
-		 for(size_t vIndex = 1; vIndex <= vCount; vIndex++)
+		 for(size_t vIndex = 1; vIndex <= 10'000; vIndex++)
 		 {
 			 auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
 			 auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
 			 auto vInputV = tVec(2);
 			 vInputV[0]		= static_cast<tNum>(vInputL);
 			 vInputV[1]		= static_cast<tNum>(vInputR);
-#if 0
-       pGraphOfNetwork->fAhead(vInputV);
-#else
 			 auto vAnswer = tVec(1);
 			 vAnswer[0]		= static_cast<tNum>(vInputL ^ vInputR);
 			 pGraphOfNetwork->fLearn(vInputV, vAnswer);
-#endif
-			 if(vIndex % (vCount / 10) == 0)
-			 {
-				 if(vInputV[0] > 0.5)
-				 {
-					 vInputV[0] = 1.0;
-				 }
-				 else
-				 {
-					 vInputV[0] = 0.0;
-				 }
-				 std::clog << "[" << vInputL << " ^ " << vInputR << "]";
-				 std::clog << " = " << vInputV << " " << vAnswer << std::endl;
-			 }
 		 }
+		 for(auto vIndex = 0b000; vIndex < 0b100; vIndex++)
+		 {
+			 bool vInputL = (vIndex & 0b10) >> 1;
+			 bool vInputR = (vIndex & 0b01) >> 0;
+			 auto vInputV = tVec(2);
+			 vInputV[0]		= static_cast<tNum>(vInputL);
+			 vInputV[1]		= static_cast<tNum>(vInputR);
+			 pGraphOfNetwork->fAhead(vInputV);
+			 vInputV[0] = vInputV[0] > 0.5 ? 1.0 : 0.0;
+			 nTextFormat::println("[{:d}^{:d}]={}", vInputL, vInputR, vInputV[0]);
+		 }
+	 }},
+	{"tAiDigitReader",
+	 []()
+	 {
 	 }},
 };
 //getters
