@@ -1171,20 +1171,39 @@ int fMain()
 	//-//-//data start
 	size_t vImageFrom = vImageFile.tellg();
 	//-//-//graphics
-	sf::VertexArray vImageVdata(sf::Points, vImageSizeX * vImageSizeY);
+	auto vImageVdata = sf::VertexArray(sf::Quads, vImageSizeX * vImageSizeY * 4);
+	auto vPixelSizes = sf::Vector2f{
+		1.0f / static_cast<tNum>(vImageSizeX),
+		1.0f / static_cast<tNum>(vImageSizeY),
+	};
 	for(size_t vY = 0; vY < vImageSizeY; vY++)
 	{
+		auto vIposY = static_cast<tNum>(vY) / static_cast<tNum>(vImageSizeY);
 		for(size_t vX = 0; vX < vImageSizeX; vX++)
 		{
-			auto	vImageStepY		 = vY * vImageSizeX;
-			auto	vImageStepX		 = vX;
-			auto	vImageSteps		 = vImageStepY + vImageStepX;
-			auto &vImagePixel		 = vImageVdata[vImageSteps];
-			vImagePixel.position = sf::Vector2f{
-				static_cast<tNum>(vX) / vImageSizeX,
-				static_cast<tNum>(vY) / vImageSizeY,
+			//steps
+			auto vStepY = vY * vImageSizeX;
+			auto vStepX = vX;
+			auto vSteps = (vStepY + vStepX) * 4;
+			//coord
+			auto vIposX = static_cast<tNum>(vX) / static_cast<tNum>(vImageSizeX);
+			//setup
+			vImageVdata[vSteps + 0].position = sf::Vector2f{
+				vIposX,
+				vIposY,
 			};
-      vImagePixel.color = sf::Color(0xff, 0xff, 0xff, 0xff);
+			vImageVdata[vSteps + 1].position = sf::Vector2f{
+				vIposX + vPixelSizes.x * 1,
+				vIposY,
+			};
+			vImageVdata[vSteps + 2].position = sf::Vector2f{
+				vIposX + vPixelSizes.x * 1,
+				vIposY + vPixelSizes.y * 1,
+			};
+			vImageVdata[vSteps + 3].position = sf::Vector2f{
+				vIposX,
+				vIposY + vPixelSizes.y * 1,
+			};
 		}
 	}
 	//-//label
@@ -1249,13 +1268,20 @@ int fMain()
 		{
 			for(size_t vX = 0; vX < vImageSizeX; vX++)
 			{
-				auto	vPixel				= fRead<uint8_t>(vImageFile);
-				auto	vImageStepY		= vY * vImageSizeX;
-				auto	vImageStepX		= vX;
-				auto	vImageSteps		= vImageStepY + vImageStepX;
-				auto &vImagePixel		= vImageVdata[vImageSteps];
-				vImagePixel.color		= sf::Color(vPixel, vPixel, vPixel, 0xff);
-				vInput[vImageSteps] = static_cast<tNum>(vPixel) / 255.0;
+				//color
+				auto vPixel = fRead<uint8_t>(vImageFile);
+				auto vColor = sf::Color(vPixel, vPixel, vPixel, 0xff);
+				//steps
+				auto vStepY = vY * vImageSizeX;
+				auto vStepX = vX;
+				auto vSteps = (vStepY + vStepX) * 4;
+				//input
+				vInput[vStepY + vX] = static_cast<tNum>(vPixel) / 255.0;
+				//image
+				vImageVdata[vSteps + 0].color = vColor;
+				vImageVdata[vSteps + 1].color = vColor;
+				vImageVdata[vSteps + 2].color = vColor;
+				vImageVdata[vSteps + 3].color = vColor;
 			}
 		}
 		std::fill(vTruth.begin(), vTruth.end(), 0.0);
@@ -1274,16 +1300,19 @@ int fMain()
 		vWindow.clear();
 		sf::Transform vTform{sf::Transform::Identity};
 		vTform.translate(sf::Vector2f{
-			static_cast<tNum>(vWindow.getSize().x) * +0.1f,
-			static_cast<tNum>(vWindow.getSize().y) * +0.1f,
+			+0.05f * static_cast<tNum>(vWindow.getSize().x),
+			+0.05f * static_cast<tNum>(vWindow.getSize().y),
 		});
 		vTform.scale(sf::Vector2f{
-			static_cast<tNum>(vWindow.getSize().x) * +0.4f,
-			static_cast<tNum>(vWindow.getSize().y) * +0.8f,
+			+0.40f * static_cast<tNum>(vWindow.getSize().x),
+			+0.90f * static_cast<tNum>(vWindow.getSize().y),
 		});
 		vGraphOfNetwork->fDraw(vWindow, vTform);
-    vTform.translate(sf::Vector2f{0.4f, 0.0f});
-    vWindow.draw(vImageVdata, vTform);
+		vTform.translate(sf::Vector2f{
+			0.40f + 0.05f,
+			0.0f,
+		});
+		vWindow.draw(vImageVdata, vTform);
 		vWindow.display();
 		//events
 		sf::Event vWindowEvent;
