@@ -1167,7 +1167,26 @@ int fMain()
 	nTextFormat::println(stdout, "[ImageSizeX]={}", vImageSizeX);
 	auto vImageSizeY = fRead<int32_t>(vImageFile);//cols
 	nTextFormat::println(stdout, "[ImageSizeY]={}", vImageSizeY);
-	auto vImageIndex = vImageCount - vImageCount;
+	auto vImageIndex = vImageCount;
+	//-//-//data start
+	size_t vImageFrom = vImageFile.tellg();
+	//-//-//graphics
+	sf::VertexArray vImageVdata(sf::Points, vImageSizeX * vImageSizeY);
+	for(size_t vY = 0; vY < vImageSizeY; vY++)
+	{
+		for(size_t vX = 0; vX < vImageSizeX; vX++)
+		{
+			auto	vImageStepY		 = vY * vImageSizeX;
+			auto	vImageStepX		 = vX;
+			auto	vImageSteps		 = vImageStepY + vImageStepX;
+			auto &vImagePixel		 = vImageVdata[vImageSteps];
+			vImagePixel.position = sf::Vector2f{
+				static_cast<tNum>(vX) / vImageSizeX,
+				static_cast<tNum>(vY) / vImageSizeY,
+			};
+      vImagePixel.color = sf::Color(0xff, 0xff, 0xff, 0xff);
+		}
+	}
 	//-//label
 	auto vLabelFile = nFileSystem::ifstream(
 		dPathToResource "/mnist-train-labels.idx1-ubyte", std::ios::binary
@@ -1185,10 +1204,12 @@ int fMain()
 	auto vLabelCount = fRead<int32_t>(vLabelFile);
 	nTextFormat::println(stdout, "[LabelCount]={}", vLabelCount);
 	auto vLabelIndex = vLabelCount - vLabelCount;
+	//-//-//data start
+	size_t vLabelFrom = vLabelFile.tellg();
 	//-//learn
-	auto vTruth = tVec(10);						//expected answer
-	auto vError = tVec(vTruth.size());//cost from each invididual example
-																		//mainloop
+	auto vTruth = tVec(10);
+	auto vError = tVec(vTruth.size());
+	//mainloop
 	while(vWindow.isOpen())
 	{
 		//timing
@@ -1203,7 +1224,7 @@ int fMain()
 		auto vLabelReset = (vLabelIndex > vLabelCount) || vLabelFile.eof();
 		if(vImageReset)
 		{
-			vImageFile.seekg(0, std::ios::beg);
+			vImageFile.seekg(vImageFrom, std::ios::beg);
 			vImageIndex = 0;
 		}
 		else
@@ -1212,7 +1233,7 @@ int fMain()
 		}
 		if(vLabelReset)
 		{
-			vLabelFile.seekg(0, std::ios::beg);
+			vLabelFile.seekg(vLabelFrom, std::ios::beg);
 			vLabelIndex = 0;
 		}
 		else
@@ -1228,9 +1249,13 @@ int fMain()
 		{
 			for(size_t vX = 0; vX < vImageSizeX; vX++)
 			{
-				auto vPixel		 = fRead<uint8_t>(vImageFile);
-				auto vIndex		 = vY * vImageSizeX + vX;
-				vInput[vIndex] = static_cast<tNum>(vPixel) / 255.0;
+				auto	vPixel				= fRead<uint8_t>(vImageFile);
+				auto	vImageStepY		= vY * vImageSizeX;
+				auto	vImageStepX		= vX;
+				auto	vImageSteps		= vImageStepY + vImageStepX;
+				auto &vImagePixel		= vImageVdata[vImageSteps];
+				vImagePixel.color		= sf::Color(vPixel, vPixel, vPixel, 0xff);
+				vInput[vImageSteps] = static_cast<tNum>(vPixel) / 255.0;
 			}
 		}
 		std::fill(vTruth.begin(), vTruth.end(), 0.0);
@@ -1246,17 +1271,19 @@ int fMain()
 			nTextFormat::println(stdout, "[Trial]{}/{}", vPercent, vTotal);
 		}
 #endif
+		vWindow.clear();
 		sf::Transform vTform{sf::Transform::Identity};
 		vTform.translate(sf::Vector2f{
 			static_cast<tNum>(vWindow.getSize().x) * +0.1f,
 			static_cast<tNum>(vWindow.getSize().y) * +0.1f,
 		});
 		vTform.scale(sf::Vector2f{
-			static_cast<tNum>(vWindow.getSize().x) * +0.8f,
+			static_cast<tNum>(vWindow.getSize().x) * +0.4f,
 			static_cast<tNum>(vWindow.getSize().y) * +0.8f,
 		});
-		vWindow.clear();
 		vGraphOfNetwork->fDraw(vWindow, vTform);
+    vTform.translate(sf::Vector2f{0.4f, 0.0f});
+    vWindow.draw(vImageVdata, vTform);
 		vWindow.display();
 		//events
 		sf::Event vWindowEvent;
