@@ -183,9 +183,10 @@ private://codetor
 				auto vArc = std::asinf(vSin);
 				auto vDeg = vArc * 180.0f / M_PI;
 				//sizes
-				auto vShapeHalfs = vIScale * 0.075f;
+				auto vShapeHalfs = std::min(vIScale * 0.1f, 0.02f);
 				auto vJointSizes = sf::Vector2f{vHyp, 0.025f};
 				vJointSizes.y		 = vJointSizes.y * std::min(vIScale, vOScale);
+				vJointSizes.y		 = std::min(vJointSizes.y, 0.01f);
 				auto vJointHalfs = vJointSizes;
 				vJointHalfs.x		 = vJointHalfs.x * 0.5f;
 				vJointHalfs.x		 = vJointHalfs.x * 0.5f;
@@ -195,7 +196,7 @@ private://codetor
 				vJointValue.setPosition(vIposX, vIposY);
 				vJointValue.setSize(vJointSizes);
 				vJointValue.setRotation(vDeg);
-				vJointValue.setOutlineThickness(vJointSizes.y * 0.1f);
+				vJointValue.setOutlineThickness(vJointHalfs.y * 0.5f);
 				vJointValue.setOutlineColor(fGetColor(1.0f, 1u));
 				vJointValue.setFillColor(fGetColor(1.0f, 0u));
 			}
@@ -206,7 +207,7 @@ private://codetor
 			auto vIposX = vIFromX;
 			auto vIposY = vIFromY + vIStepY * vI;
 			//sizes
-			auto vShapeHalfs = vIScale * 0.075f;
+			auto vShapeHalfs = std::min(vIScale * 0.1f, 0.01f);
 			//shape
 			auto &vShapeValue = vShapeArray[vI];
 			vShapeValue.setOrigin(vShapeHalfs, vShapeHalfs);
@@ -325,15 +326,15 @@ public://codetor
 			auto vIposX = vIFromX;
 			auto vIposY = vIFromY + vOStepY * vI;
 			//shape
-			auto	vIShapeHalfs = vIScale * 0.05f;
+			auto	vIShapeHalfs = std::min(vIScale * 0.05f, 0.01f);
 			auto &vIShapeValue = vIShapeArray[vI];
 			vIShapeValue.setOrigin(vIShapeHalfs, vIShapeHalfs);
 			vIShapeValue.setPosition(vIposX, vIposY);
 			vIShapeValue.setRadius(vIShapeHalfs);
-			vIShapeValue.setOutlineThickness(vIShapeHalfs * 0.1f);
+			vIShapeValue.setOutlineThickness(vIShapeHalfs * 0.010f);
 			vIShapeValue.setOutlineColor(fGetColor(1.0f, 1u));
 			vIShapeValue.setFillColor(fGetColor(1.0f, 0u));
-			auto	vOShapeHalfs = vOScale * 0.05f;
+			auto	vOShapeHalfs = std::min(vOScale * 0.05f, 0.01f);
 			auto &vOShapeValue = vOShapeArray[vI];
 			vOShapeValue.setOrigin(vOShapeHalfs, vOShapeHalfs);
 			vOShapeValue.setPosition(vOposX, vOposY);
@@ -344,6 +345,7 @@ public://codetor
 			//joint
 			auto vJointSizes	= sf::Vector2f{vOposX - vIposX, 0.025f};
 			vJointSizes.y			= vJointSizes.y * std::min(vIScale, vOScale);
+			vJointSizes.y			= std::min(vJointSizes.y, 0.01f);
 			auto vJointHalfs	= vJointSizes;
 			vJointHalfs.x			= vJointHalfs.x * 0.5f;
 			vJointHalfs.y			= vJointHalfs.y * 0.5f;
@@ -351,7 +353,7 @@ public://codetor
 			vJointValue.setOrigin(0.0f, vJointHalfs.y);
 			vJointValue.setPosition(vIposX, vIposY);
 			vJointValue.setSize(vJointSizes);
-			vJointValue.setOutlineThickness(vJointSizes.y * 0.1f);
+			vJointValue.setOutlineThickness(vJointHalfs.y * 0.5f);
 			vJointValue.setOutlineColor(fGetColor(1.0f, 0u));
 			vJointValue.setFillColor(fGetColor(1.0f, 1u));
 		}//nodes
@@ -1137,14 +1139,56 @@ int fMain()
 	//intel
 	auto vGraphOfNetwork
 		= tMakerOfNetwork()
-				.fMakeLayer<tLayerOfNetworkDense>(2, 16)
+				.fMakeLayer<tLayerOfNetworkDense>(28 * 28, 32)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(32)
+				.fMakeLayer<tLayerOfNetworkDense>(32, 16)
 				.fMakeLayer<tLayerOfNetworkActivTanh>(16)
-				.fMakeLayer<tLayerOfNetworkDense>(16, 8)
-				.fMakeLayer<tLayerOfNetworkActivTanh>(8)
-				.fMakeLayer<tLayerOfNetworkDense>(8, 1)
-				.fMakeLayer<tLayerOfNetworkActivTanh>(1)
+				.fMakeLayer<tLayerOfNetworkDense>(16, 10)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(10)
 				.fTakeGraph();
-	//mainloop
+	//-//image
+	auto vImageFile = nFileSystem::ifstream(
+		dPathToResource "/mnist-train-images.idx3-ubyte", std::ios::binary
+	);
+	fThrowIfNot(
+		vImageFile.is_open(),
+		std::logic_error("failed to load the mnist-train-images file")
+	);
+	//-//-//space
+	vImageFile.seekg(0, std::ios::end);
+	size_t vImageSpace = vImageFile.tellg();
+	nTextFormat::println(stdout, "[ImageSpace]={}", vImageSpace);
+	vImageFile.seekg(4, std::ios::beg);
+	//-//-//count
+	auto vImageCount = fRead<int32_t>(vImageFile);
+	//-//-//sizes
+	nTextFormat::println(stdout, "[ImageCount]={}", vImageCount);
+	auto vImageSizeX = fRead<int32_t>(vImageFile);//rows
+	nTextFormat::println(stdout, "[ImageSizeX]={}", vImageSizeX);
+	auto vImageSizeY = fRead<int32_t>(vImageFile);//cols
+	nTextFormat::println(stdout, "[ImageSizeY]={}", vImageSizeY);
+	auto vImageIndex = vImageCount - vImageCount;
+	//-//label
+	auto vLabelFile = nFileSystem::ifstream(
+		dPathToResource "/mnist-train-labels.idx1-ubyte", std::ios::binary
+	);
+	fThrowIfNot(
+		vLabelFile.is_open(),
+		std::logic_error("failed to load the mnist-train-labels file")
+	);
+	//-//-//space
+	vLabelFile.seekg(0, std::ios::end);
+	size_t vLabelSpace = vLabelFile.tellg();
+	nTextFormat::println(stdout, "[LabelsSpace]={}", vLabelSpace);
+	vLabelFile.seekg(4, std::ios::beg);
+	//-//-//count
+	auto vLabelCount = fRead<int32_t>(vLabelFile);
+	nTextFormat::println(stdout, "[LabelCount]={}", vLabelCount);
+	auto vLabelIndex = vLabelCount - vLabelCount;
+	//-//learn
+	auto vTruth = tVec(10);						//expected answer
+	auto vError = tVec(vTruth.size());//cost from each invididual example
+																		//mainloop
 	while(vWindow.isOpen())
 	{
 		//timing
@@ -1155,29 +1199,66 @@ int fMain()
 		vTimeFNow					 = vTimePNow.asSeconds();
 		unsigned vTimeINow = static_cast<unsigned>(vTimeFNow);
 		//intel
-		if(static_cast<unsigned>(vTimePNow.asMilliseconds()) % 500 == 0)
+		auto vImageReset = (vImageIndex > vImageCount) || vImageFile.eof();
+		auto vLabelReset = (vLabelIndex > vLabelCount) || vLabelFile.eof();
+		if(vImageReset)
 		{
-			auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
-			auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
-			auto vInputV = tVec(2);
-			vInputV[0]	 = static_cast<tNum>(vInputL);
-			vInputV[1]	 = static_cast<tNum>(vInputR);
-			auto vAnswer = tVec(1);
-			vAnswer[0]	 = static_cast<tNum>(vInputL ^ vInputR);
-			vGraphOfNetwork->fLearn(vInputV, vAnswer);
-			sf::Transform vTform{sf::Transform::Identity};
-			vTform.translate(sf::Vector2f{
-				static_cast<tNum>(vWindow.getSize().x) * +0.1f,
-				static_cast<tNum>(vWindow.getSize().y) * +0.1f,
-			});
-			vTform.scale(sf::Vector2f{
-				static_cast<tNum>(vWindow.getSize().x) * +0.8f,
-				static_cast<tNum>(vWindow.getSize().y) * +0.8f,
-			});
-			vWindow.clear();
-			vGraphOfNetwork->fDraw(vWindow, vTform);
-			vWindow.display();
-		}//intel
+			vImageFile.seekg(0, std::ios::beg);
+			vImageIndex = 0;
+		}
+		else
+		{
+			vImageIndex++;
+		}
+		if(vLabelReset)
+		{
+			vLabelFile.seekg(0, std::ios::beg);
+			vLabelIndex = 0;
+		}
+		else
+		{
+			vLabelIndex++;
+		}
+		if(vImageReset || vLabelReset)
+		{
+			continue;
+		}
+		auto vInput = tVec(vImageSizeX * vImageSizeY);
+		for(size_t vY = 0; vY < vImageSizeY; vY++)
+		{
+			for(size_t vX = 0; vX < vImageSizeX; vX++)
+			{
+				auto vPixel		 = fRead<uint8_t>(vImageFile);
+				auto vIndex		 = vY * vImageSizeX + vX;
+				vInput[vIndex] = static_cast<tNum>(vPixel) / 255.0;
+			}
+		}
+		std::fill(vTruth.begin(), vTruth.end(), 0.0);
+		auto vDigit		 = fRead<uint8_t>(vLabelFile);
+		vTruth[vDigit] = 1.0;
+		vGraphOfNetwork->fLearn(vInput, vTruth);
+#if 1
+		auto vShowIndex = 10'000;
+		if(vLabelIndex % vShowIndex == 0)
+		{
+			auto vPercent = vLabelIndex / vShowIndex;
+			auto vTotal		= vLabelCount / vShowIndex;
+			nTextFormat::println(stdout, "[Trial]{}/{}", vPercent, vTotal);
+		}
+#endif
+		sf::Transform vTform{sf::Transform::Identity};
+		vTform.translate(sf::Vector2f{
+			static_cast<tNum>(vWindow.getSize().x) * +0.1f,
+			static_cast<tNum>(vWindow.getSize().y) * +0.1f,
+		});
+		vTform.scale(sf::Vector2f{
+			static_cast<tNum>(vWindow.getSize().x) * +0.8f,
+			static_cast<tNum>(vWindow.getSize().y) * +0.8f,
+		});
+		vWindow.clear();
+		vGraphOfNetwork->fDraw(vWindow, vTform);
+		vWindow.display();
+		//events
 		sf::Event vWindowEvent;
 		vWindow.pollEvent(vWindowEvent);
 		switch(vWindowEvent.type)
