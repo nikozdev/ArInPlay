@@ -61,7 +61,7 @@ static auto fGetColor(float vValue, bool vFill)
 		};
 		sf::Uint32 vF = 0x00'00'00'00;
 	} vPixel;
-	sf::Uint8 vColorBase = (vValue + 1.0) * 127.0;
+	sf::Uint8 vColorBase = (vValue + 1.0) * 120.0;
 	if(vFill)
 	{
 		vPixel.vR = vColorBase;
@@ -146,58 +146,76 @@ private://codetor
 		, vJointTable(vOputDim, tJointArray(vIputDim))
 		, vShapeArray(vIputDim)
 	{
-		tNum vStepX = 0.1f, vStepY = 1.0f / static_cast<tNum>(vOputDim);
-		tNum vScale = 1.0f / static_cast<tNum>(vIputDim);
-#if 0
-		for(size_t vO = 0; vO < vOputDim; vO++)
+		fThrowIfNot(
+			vIputDim > 0,
+			std::logic_error("layers must have at least input 1 dimension")
+		);
+		fThrowIfNot(
+			vOputDim > 0,
+			std::logic_error("layers must have at least output 1 dimension")
+		);
+		tNum vIScale = 1.00f / static_cast<tNum>(vIputDim);
+		tNum vIStepY = vIScale;
+		tNum vIFromX = 0.00f, vIFromY = 0.50f * vIScale;
+		tNum vOScale = 1.00f / static_cast<tNum>(vOputDim);
+		tNum vOStepY = vOScale;
+		tNum vOFromY = 0.50f * vOScale, vOFromX = 1.0f / 6.0f;
+		for(size_t vO = 0u; vO < vOputDim; vO++)
 		{
 			vBiasVec[vO]			= vRandNorm(vRandEngine);
-			auto	vOposX			= vStepX;
-			auto	vOposY			= vStepY * vO;
+			auto	vOposX			= vOFromX;
+			auto	vOposY			= vOFromY + vOStepY * vO;
 			auto &vJointArray = vJointTable[vO];
-			for(size_t vI = 0; vI < vIputDim; vI++)
+			for(size_t vI = 0u; vI < vIputDim; vI++)
 			{
 				vEdgeMat(vO, vI) = vRandNorm(vRandEngine);
-        //values
-				auto vIposX			 = 0.0;
-				auto vIposY			 = vStepY * vI;
-				auto vOpposite	 = vOposY - vIposY;
-				auto vAdjacent	 = vOposX - vOposY;
-				auto vHypotenuse = 0.0f;
-				vHypotenuse			 = vHypotenuse + (vOpposite * vOpposite);
-				vHypotenuse			 = vHypotenuse + (vAdjacent * vAdjacent);
-				vHypotenuse			 = std::sqrt(vHypotenuse);
-				auto vSin				 = vOpposite / vHypotenuse;
-				auto vArc				 = std::asinf(vSin);
-				auto vDeg				 = vArc * 180.0 / M_PI;
-				auto vSizes			 = sf::Vector2f{vHypotenuse, vScale * 0.05f};
+				//coord
+				auto vIposX = vIFromX;
+				auto vIposY = vIFromY + vIStepY * vI;
+				//angle
+				auto vOpo = vOposY - vIposY;
+				auto vAdj = vOposX - vIposX;
+				auto vHyp = 0.0f;
+				vHyp			= vHyp + (vOpo * vOpo);
+				vHyp			= vHyp + (vAdj * vAdj);
+				vHyp			= std::sqrt(vHyp);
+				auto vSin = vOpo / vHyp;
+				auto vArc = std::asinf(vSin);
+				auto vDeg = vArc * 180.0f / M_PI;
+				//sizes
+				auto vShapeHalfs = vIScale * 0.075f;
+				auto vJointSizes = sf::Vector2f{vHyp, 0.025f};
+				vJointSizes.y		 = vJointSizes.y * std::min(vIScale, vOScale);
+				auto vJointHalfs = vJointSizes;
+				vJointHalfs.x		 = vJointHalfs.x * 0.5f;
+				vJointHalfs.x		 = vJointHalfs.x * 0.5f;
 				//joints
 				auto &vJointValue = vJointArray[vI];
-				vJointValue.setOrigin(vSizes.x * 0.0f, vSizes.y * 0.5f);
+				vJointValue.setOrigin(0.0f, vJointHalfs.y);
 				vJointValue.setPosition(vIposX, vIposY);
-				vJointValue.setSize(vSizes);
+				vJointValue.setSize(vJointSizes);
 				vJointValue.setRotation(vDeg);
-				vJointValue.setOutlineThickness(0.1f);
-				vJointValue.setOutlineColor(sf::Color(0xff, 0xff, 0xff, 0xff));
-				vJointValue.setFillColor(sf::Color(0x00, 0x00, 0x00, 0x00));
+				vJointValue.setOutlineThickness(vJointSizes.y * 0.1f);
+				vJointValue.setOutlineColor(fGetColor(1.0f, 1u));
+				vJointValue.setFillColor(fGetColor(1.0f, 0u));
 			}
 		}//weights and biases
 		for(size_t vI = 0; vI < vIputDim; vI++)
 		{
-      //values
-			auto vIposX = vStepX;
-			auto vIposY = vStepY * vI;
-			auto	vSizes			= vScale * 0.1f;
-			//shapes
+			//coord
+			auto vIposX = vIFromX;
+			auto vIposY = vIFromY + vIStepY * vI;
+			//sizes
+			auto vShapeHalfs = vIScale * 0.075f;
+			//shape
 			auto &vShapeValue = vShapeArray[vI];
-			vShapeValue.setOrigin(vSizes * 0.5f, vSizes * 0.5f);
+			vShapeValue.setOrigin(vShapeHalfs, vShapeHalfs);
 			vShapeValue.setPosition(vIposX, vIposY);
-			vShapeValue.setRadius(vSizes);
-			vShapeValue.setOutlineThickness(0.1f);
-			vShapeValue.setOutlineColor(sf::Color(0x00, 0x00, 0x00, 0x00));
-			vShapeValue.setFillColor(sf::Color(0xff, 0xff, 0xff, 0xff));
+			vShapeValue.setRadius(vShapeHalfs);
+			vShapeValue.setOutlineThickness(vShapeHalfs * 0.1f);
+			vShapeValue.setOutlineColor(fGetColor(1.0f, 0u));
+			vShapeValue.setFillColor(fGetColor(1.0f, 1u));
 		}//nodes
-#endif
 		return;
 	}//tLayerOfNetworkDense
 
@@ -285,43 +303,60 @@ class tLayerOfNetworkActiv final: public tLayerOfNetwork
 public://codetor
 
 	tLayerOfNetworkActiv(size_t vIputDim)
-		: vNodeVec(vIputDim), vShapeArray(vIputDim), vJointArray(vIputDim)
+		: vNodeVec(vIputDim)
+		, vIShapeArray(vIputDim)
+		, vOShapeArray(vIputDim)
+		, vJointArray(vIputDim)
 	{
-		tNum vScale = 1.0f / static_cast<tNum>(vIputDim);
-		tNum vFromX = 0.0f, vFromY = 0.5f * vScale;
-		tNum vStepX = 0.1f, vStepY = vScale;
+		fThrowIfNot(
+			vIputDim > 0,
+			std::logic_error("layers must have at least input 1 dimension")
+		);
+		tNum vIScale = 1.00f / static_cast<tNum>(vIputDim);
+		tNum vIFromX = 0.00f, vIFromY = 0.50f * vIScale;
+		tNum vIStepY = vIScale;
+		tNum vOScale = vIScale;
+		tNum vOFromY = vIFromY, vOFromX = 1.0f / 6.0f;
+		tNum vOStepY = vOScale;
 		for(size_t vI = 0u; vI < vIputDim; vI++)
 		{
-			auto vOposX = vFromX + vStepX;
-			auto vOposY = vFromY + vStepY * vI;
-			auto vIposX = vFromX;
-			auto vIposY = vOposY;
+			auto vOposX = vOFromX;
+			auto vOposY = vOFromY + vOStepY * vI;
+			auto vIposX = vIFromX;
+			auto vIposY = vIFromY + vOStepY * vI;
 			//shape
-			auto	vShapeSizes = vScale * 0.075f;
-			auto	vShapeHalfs = vShapeSizes * 0.5f;
-			auto &vShapeValue = vShapeArray[vI];
-			vShapeValue.setOrigin(vShapeHalfs, vShapeHalfs);
-			vShapeValue.setPosition(vOposX + vShapeHalfs, vOposY + vShapeHalfs);
-			vShapeValue.setRadius(vShapeSizes);
-			vShapeValue.setOutlineThickness(/* vShapeSizes */ 0.0025f);
-			vShapeValue.setOutlineColor(fGetColor(1.0f, 1u));
-			vShapeValue.setFillColor(fGetColor(1.0f, 0u));
+			auto	vIShapeHalfs = vIScale * 0.05f;
+			auto &vIShapeValue = vIShapeArray[vI];
+			vIShapeValue.setOrigin(vIShapeHalfs, vIShapeHalfs);
+			vIShapeValue.setPosition(vIposX, vIposY);
+			vIShapeValue.setRadius(vIShapeHalfs);
+			vIShapeValue.setOutlineThickness(vIShapeHalfs * 0.1f);
+			vIShapeValue.setOutlineColor(fGetColor(1.0f, 1u));
+			vIShapeValue.setFillColor(fGetColor(1.0f, 0u));
+			auto	vOShapeHalfs = vOScale * 0.05f;
+			auto &vOShapeValue = vOShapeArray[vI];
+			vOShapeValue.setOrigin(vOShapeHalfs, vOShapeHalfs);
+			vOShapeValue.setPosition(vOposX, vOposY);
+			vOShapeValue.setRadius(vOShapeHalfs);
+			vOShapeValue.setOutlineThickness(vOShapeHalfs * 0.1f);
+			vOShapeValue.setOutlineColor(fGetColor(1.0f, 1u));
+			vOShapeValue.setFillColor(fGetColor(1.0f, 0u));
 			//joint
-			auto vJointSizes = sf::Vector2f{vStepX, vScale * 0.050f};
-			auto vJointHalfs = sf::Vector2f{vJointSizes.x, vJointSizes.y * 0.5f};
-			auto vJointCoord = vJointHalfs;
-      vJointCoord.x = vJointCoord.x + vShapeHalfs;
-      vJointCoord.y = vJointCoord.y + vShapeHalfs;
+			auto vJointSizes	= sf::Vector2f{vOposX - vIposX, 0.025f};
+			vJointSizes.y			= vJointSizes.y * std::min(vIScale, vOScale);
+			auto vJointHalfs	= vJointSizes;
+			vJointHalfs.x			= vJointHalfs.x * 0.5f;
+			vJointHalfs.y			= vJointHalfs.y * 0.5f;
 			auto &vJointValue = vJointArray[vI];
-			vJointValue.setOrigin(vJointHalfs.x, vJointHalfs.y);
-			vJointValue.setPosition(vIposX + vJointCoord.x, vIposY + vJointCoord.y);
+			vJointValue.setOrigin(0.0f, vJointHalfs.y);
+			vJointValue.setPosition(vIposX, vIposY);
 			vJointValue.setSize(vJointSizes);
-			vJointValue.setOutlineThickness(/* vJointSizes.y */ 0.0075f);
+			vJointValue.setOutlineThickness(vJointSizes.y * 0.1f);
 			vJointValue.setOutlineColor(fGetColor(1.0f, 0u));
 			vJointValue.setFillColor(fGetColor(1.0f, 1u));
 		}//nodes
 		return;
-	}
+	}//tLayerOfNetworkActiv
 
 public://actions
 
@@ -354,11 +389,20 @@ public://actions
 			vJointValue.setFillColor(fGetColor(vJointColor, 1));
 			vRender.draw(vJointValue, vTform);
 			//shape
-			auto &vShapeValue = vShapeArray[vI];
-			auto	vShapeColor = vNodeVec[vI];
-			vShapeValue.setOutlineColor(fGetColor(vShapeColor, 0));
-			vShapeValue.setFillColor(fGetColor(vShapeColor, 1));
-			vRender.draw(vShapeValue, vTform);
+#if 1
+			auto &vIShapeValue = vIShapeArray[vI];
+			auto	vIShapeColor = vNodeVec[vI];
+			vIShapeValue.setOutlineColor(fGetColor(vIShapeColor, 0));
+			vIShapeValue.setFillColor(fGetColor(vIShapeColor, 1));
+			vRender.draw(vIShapeValue, vTform);
+#endif
+#if 1
+			auto &vOShapeValue = vOShapeArray[vI];
+			auto	vOShapeColor = vNodeVec[vI];
+			vOShapeValue.setOutlineColor(fGetColor(vOShapeColor, 0));
+			vOShapeValue.setFillColor(fGetColor(vOShapeColor, 1));
+			vRender.draw(vOShapeValue, vTform);
+#endif
 		}
 	}//fDraw
 
@@ -377,7 +421,8 @@ private://datadef
 	tVec vNodeVec;
 
 	tJointArray vJointArray;
-	tShapeArray vShapeArray;
+	tShapeArray vIShapeArray;
+	tShapeArray vOShapeArray;
 
 private://friends
 
@@ -485,10 +530,11 @@ public://actions
 
 	inline void fDraw(sf::RenderWindow &vWindow, sf::Transform &vTform)
 	{
-		for(size_t vIndex = 0; vIndex < vLayerArray.size(); vIndex++)
+		tNum vStepX = 1.0f / static_cast<tNum>(vLayerArray.size());
+		for(size_t vIndex = 0u; vIndex < vLayerArray.size(); vIndex++)
 		{
-			vTform.translate({0.1, 0.00});
 			vLayerArray[vIndex]->fDraw(vWindow, vTform);
+			vTform.translate({vStepX, 0.0f});
 		}
 	}//fDraw
 
@@ -1091,11 +1137,11 @@ int fMain()
 	//intel
 	auto vGraphOfNetwork
 		= tMakerOfNetwork()
-				.fMakeLayer<tLayerOfNetworkDense>(2, 4)
-				.fMakeLayer<tLayerOfNetworkActivTanh>(4)
-				.fMakeLayer<tLayerOfNetworkDense>(4, 2)
-				.fMakeLayer<tLayerOfNetworkActivTanh>(2)
-				.fMakeLayer<tLayerOfNetworkDense>(2, 1)
+				.fMakeLayer<tLayerOfNetworkDense>(2, 16)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(16)
+				.fMakeLayer<tLayerOfNetworkDense>(16, 8)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(8)
+				.fMakeLayer<tLayerOfNetworkDense>(8, 1)
 				.fMakeLayer<tLayerOfNetworkActivTanh>(1)
 				.fTakeGraph();
 	//mainloop
@@ -1119,13 +1165,17 @@ int fMain()
 			auto vAnswer = tVec(1);
 			vAnswer[0]	 = static_cast<tNum>(vInputL ^ vInputR);
 			vGraphOfNetwork->fLearn(vInputV, vAnswer);
-			sf::Transform vScale{sf::Transform::Identity};
-			vScale.scale(sf::Vector2f{
-				static_cast<tNum>(vWindow.getSize().x),
-				static_cast<tNum>(vWindow.getSize().y),
+			sf::Transform vTform{sf::Transform::Identity};
+			vTform.translate(sf::Vector2f{
+				static_cast<tNum>(vWindow.getSize().x) * +0.1f,
+				static_cast<tNum>(vWindow.getSize().y) * +0.1f,
+			});
+			vTform.scale(sf::Vector2f{
+				static_cast<tNum>(vWindow.getSize().x) * +0.8f,
+				static_cast<tNum>(vWindow.getSize().y) * +0.8f,
 			});
 			vWindow.clear();
-			vGraphOfNetwork->fDraw(vWindow, vScale);
+			vGraphOfNetwork->fDraw(vWindow, vTform);
 			vWindow.display();
 		}//intel
 		sf::Event vWindowEvent;
