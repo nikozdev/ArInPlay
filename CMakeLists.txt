@@ -135,6 +135,23 @@ set_tests_properties(${vNameOfTest} PROPERTIES
     PASS_REGULAR_EXPRESSION ${vTextOfTest}
     ) # set_tests_properties
 
+set(vNameOfTest "tAiXorSolver")
+add_test(NAME ${vNameOfTest}
+    COMMAND ${vPathToExec} ${vNameOfTest}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ) # add_test
+set(vTextOfTest "")
+string(APPEND vTextOfTest "[${vNameOfTest}]=(.+")
+string(APPEND vTextOfTest "[0\\^0]=0.+")
+string(APPEND vTextOfTest "[0\\^1]=1.+")
+string(APPEND vTextOfTest "[1\\^0]=1.+")
+string(APPEND vTextOfTest "[1\\^1]=0.+")
+string(APPEND vTextOfTest ")=[${vNameOfTest}]\n")
+fFilterOfText(vTextOfTest)
+set_tests_properties(${vNameOfTest} PROPERTIES
+    PASS_REGULAR_EXPRESSION ${vTextOfTest}
+    ) # set_tests_properties
+
 # hide
 
 mark_as_advanced(FORCE CMAKE_INSTALL_PREFIX)
