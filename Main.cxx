@@ -50,24 +50,63 @@ namespace nTextFormat = fmt;
 #define fThrowIf(vExpr, vBool, vError) fDoIf(vExpr, vBool, throw vError)
 #define fThrowIfYes(vExpr, vError)		 fDoIfYes(vExpr, throw vError)
 #define fThrowIfNot(vExpr, vError)		 fDoIfNot(vExpr, throw vError)
+//getters
+static auto fGetColor(float vValue, bool vFill)
+{
+	union tPixel
+	{
+		struct
+		{
+			sf::Uint8 vA, vB, vG, vR;
+		};
+		sf::Uint32 vF = 0x00'00'00'00;
+	} vPixel;
+	sf::Uint8 vColorBase = (vValue + 1.0) * 127.0;
+	if(vFill)
+	{
+		vPixel.vR = vColorBase;
+		vPixel.vG = vColorBase;
+		vPixel.vB = vColorBase;
+	}
+	else
+	{
+		vPixel.vR = 0xff - vColorBase;
+		vPixel.vG = 0xff - vColorBase;
+		vPixel.vB = 0xff - vColorBase;
+	}
+	vPixel.vA = 0xff;
+	return sf::Color{vPixel.vF};
+}//fGetColor
 //datadef
+//-//random
 static std::random_device								vRandDevice;
 static std::mt19937_64									vRandEngine(vRandDevice());
 static std::uniform_real_distribution<> vRandNorm(-1.0, +1.0);
 static std::uniform_int_distribution<>	vRandBool(0, 1);
 //typedef
+template<typename tValue>
+using tRefer = std::shared_ptr<tValue>;
+//-//command
 using tCmdKey = std::string_view;
 using tCmdFun = std::function<void()>;
 using tCmdTab = std::unordered_map<tCmdKey, tCmdFun>;
+//-//graphics
+using tJointValue = sf::RectangleShape;
+using tJointArray = std::vector<tJointValue>;
+using tJointTable = std::vector<tJointArray>;
+using tShapeValue = sf::CircleShape;
+using tShapeArray = std::vector<tShapeValue>;
 //-//maths
-using tNum	= double;					//the type of number to use
+using tNum	= float;					//the type of number to use
 using tVec	= Eigen::VectorXd;//array of numbers
 using tMat	= Eigen::MatrixXd;//array of vectors
 using tNode = tNum;						//input and output values
 using tEdge = tNum;						//input-output coefficient
 using tBias = tNum;						//aka bias
+//-//intel
+class tMakerOfNetwork;
 /* type of layer of neural network */
-typedef class tLayerOfNetwork
+class tLayerOfNetwork
 {
 public://codetor
 
@@ -78,44 +117,89 @@ public://actions
 	virtual void fAhead(tVec &vIputVec) = 0;
 	virtual void fAback(tVec &vOputVec) = 0;
 
+	virtual void fDraw(sf::RenderWindow &vRender, const sf::Transform &vTform) = 0;
+
 public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const = 0;
 
-} tLayerOfNetwork;
+protected://friends
+
+	friend class tMakerOfNetwork;
+
+};//tLayerOfNetwork
 inline std::ostream &
 operator<<(std::ostream &vStream, const tLayerOfNetwork &rLayer)
 {
 	return rLayer.operator<<(vStream);
 }//operator<<
 /* type of layer of network dense */
-typedef class tLayerOfNetworkDense final: public tLayerOfNetwork
+class tLayerOfNetworkDense final: public tLayerOfNetwork
 {
-public://codetor
+private://codetor
 
 	tLayerOfNetworkDense(size_t vIputDim, size_t vOputDim, tNum vRateNum = 0.1)
 		: vEdgeMat(vOputDim, vIputDim)
 		, vNodeVec(vIputDim)
 		, vBiasVec(vOputDim)
 		, vRateNum(vRateNum)
+		, vJointTable(vOputDim, tJointArray(vIputDim))
+		, vShapeArray(vIputDim)
 	{
-		for(size_t vY = 0; vY < vOputDim; vY++)
+		tNum vStepX = 0.1f, vStepY = 1.0f / static_cast<tNum>(vOputDim);
+		tNum vScale = 1.0f / static_cast<tNum>(vIputDim);
+#if 0
+		for(size_t vO = 0; vO < vOputDim; vO++)
 		{
-#if 1
-			vBiasVec[vY] = vRandNorm(vRandEngine);
-#else
-			vBiasVec[vY] = 0.5;
-#endif
-			for(size_t vX = 0; vX < vIputDim; vX++)
+			vBiasVec[vO]			= vRandNorm(vRandEngine);
+			auto	vOposX			= vStepX;
+			auto	vOposY			= vStepY * vO;
+			auto &vJointArray = vJointTable[vO];
+			for(size_t vI = 0; vI < vIputDim; vI++)
 			{
-#if 1
-				vEdgeMat(vY, vX) = vRandNorm(vRandEngine);
-#else
-				vEdgeMat(vY, vX) = 0.5;
-#endif
+				vEdgeMat(vO, vI) = vRandNorm(vRandEngine);
+        //values
+				auto vIposX			 = 0.0;
+				auto vIposY			 = vStepY * vI;
+				auto vOpposite	 = vOposY - vIposY;
+				auto vAdjacent	 = vOposX - vOposY;
+				auto vHypotenuse = 0.0f;
+				vHypotenuse			 = vHypotenuse + (vOpposite * vOpposite);
+				vHypotenuse			 = vHypotenuse + (vAdjacent * vAdjacent);
+				vHypotenuse			 = std::sqrt(vHypotenuse);
+				auto vSin				 = vOpposite / vHypotenuse;
+				auto vArc				 = std::asinf(vSin);
+				auto vDeg				 = vArc * 180.0 / M_PI;
+				auto vSizes			 = sf::Vector2f{vHypotenuse, vScale * 0.05f};
+				//joints
+				auto &vJointValue = vJointArray[vI];
+				vJointValue.setOrigin(vSizes.x * 0.0f, vSizes.y * 0.5f);
+				vJointValue.setPosition(vIposX, vIposY);
+				vJointValue.setSize(vSizes);
+				vJointValue.setRotation(vDeg);
+				vJointValue.setOutlineThickness(0.1f);
+				vJointValue.setOutlineColor(sf::Color(0xff, 0xff, 0xff, 0xff));
+				vJointValue.setFillColor(sf::Color(0x00, 0x00, 0x00, 0x00));
 			}
-		}
-	}
+		}//weights and biases
+		for(size_t vI = 0; vI < vIputDim; vI++)
+		{
+      //values
+			auto vIposX = vStepX;
+			auto vIposY = vStepY * vI;
+			auto	vSizes			= vScale * 0.1f;
+			//shapes
+			auto &vShapeValue = vShapeArray[vI];
+			vShapeValue.setOrigin(vSizes * 0.5f, vSizes * 0.5f);
+			vShapeValue.setPosition(vIposX, vIposY);
+			vShapeValue.setRadius(vSizes);
+			vShapeValue.setOutlineThickness(0.1f);
+			vShapeValue.setOutlineColor(sf::Color(0x00, 0x00, 0x00, 0x00));
+			vShapeValue.setFillColor(sf::Color(0xff, 0xff, 0xff, 0xff));
+		}//nodes
+#endif
+		return;
+	}//tLayerOfNetworkDense
 
 public://actions
 
@@ -131,6 +215,34 @@ public://actions
 		vOputVec = vEdgeMat.transpose() * vOputVec;
 	}//fAback
 
+	virtual void
+	fDraw(sf::RenderWindow &vRender, const sf::Transform &vTform) override
+	{
+		for(size_t vO = 0; vO < vBiasVec.size(); vO++)
+		{
+			auto &vJointArray = vJointTable[vO];
+			for(size_t vI = 0; vI < vNodeVec.size(); vI++)
+			{
+				auto &vJointValue = vJointArray[vI];
+				auto	vJointColor = vEdgeMat(vO, vI);
+				vJointValue.setOutlineColor(fGetColor(vJointColor, 1));
+				vJointValue.setFillColor(fGetColor(vJointColor, 0));
+				vRender.draw(vJointValue, vTform);
+				continue;
+			}//edge inputs
+			continue;
+		}//edge outputs
+		for(size_t vI = 0; vI < vNodeVec.size(); vI++)
+		{
+			auto &vShapeValue = vShapeArray[vI];
+			auto	vShapeColor = vNodeVec[vI];
+			vShapeValue.setOutlineColor(fGetColor(vShapeColor, 0));
+			vShapeValue.setFillColor(fGetColor(vShapeColor, 1));
+			vRender.draw(vShapeValue, vTform);
+		}//neurons
+		return;
+	}//fDraw
+
 public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
@@ -144,6 +256,9 @@ public://operats
 		vStream << "[BiasVec]=(" << std::endl;
 		vStream << vBiasVec << std::endl;
 		vStream << ")=[BiasVec]" << std::endl;
+		vStream << "[RateNum]=(" << std::endl;
+		vStream << vRateNum << std::endl;
+		vStream << ")=[RateNum]" << std::endl;
 		return vStream;
 	}//operator<<
 
@@ -155,11 +270,59 @@ private://datadef
 
 	tNum vRateNum;//learning rate
 
-} tLayerOfNetworkDense;
+	tJointTable vJointTable;
+	tShapeArray vShapeArray;
+
+private://friends
+
+	friend class tMakerOfNetwork;
+
+};//tLayerOfNetworkDense
 /* type of layer of network activation */
 template<auto fActiv, auto fPrime>
 class tLayerOfNetworkActiv final: public tLayerOfNetwork
 {
+public://codetor
+
+	tLayerOfNetworkActiv(size_t vIputDim)
+		: vNodeVec(vIputDim), vShapeArray(vIputDim), vJointArray(vIputDim)
+	{
+		tNum vScale = 1.0f / static_cast<tNum>(vIputDim);
+		tNum vFromX = 0.0f, vFromY = 0.5f * vScale;
+		tNum vStepX = 0.1f, vStepY = vScale;
+		for(size_t vI = 0u; vI < vIputDim; vI++)
+		{
+			auto vOposX = vFromX + vStepX;
+			auto vOposY = vFromY + vStepY * vI;
+			auto vIposX = vFromX;
+			auto vIposY = vOposY;
+			//shape
+			auto	vShapeSizes = vScale * 0.075f;
+			auto	vShapeHalfs = vShapeSizes * 0.5f;
+			auto &vShapeValue = vShapeArray[vI];
+			vShapeValue.setOrigin(vShapeHalfs, vShapeHalfs);
+			vShapeValue.setPosition(vOposX + vShapeHalfs, vOposY + vShapeHalfs);
+			vShapeValue.setRadius(vShapeSizes);
+			vShapeValue.setOutlineThickness(/* vShapeSizes */ 0.0025f);
+			vShapeValue.setOutlineColor(fGetColor(1.0f, 1u));
+			vShapeValue.setFillColor(fGetColor(1.0f, 0u));
+			//joint
+			auto vJointSizes = sf::Vector2f{vStepX, vScale * 0.050f};
+			auto vJointHalfs = sf::Vector2f{vJointSizes.x, vJointSizes.y * 0.5f};
+			auto vJointCoord = vJointHalfs;
+      vJointCoord.x = vJointCoord.x + vShapeHalfs;
+      vJointCoord.y = vJointCoord.y + vShapeHalfs;
+			auto &vJointValue = vJointArray[vI];
+			vJointValue.setOrigin(vJointHalfs.x, vJointHalfs.y);
+			vJointValue.setPosition(vIposX + vJointCoord.x, vIposY + vJointCoord.y);
+			vJointValue.setSize(vJointSizes);
+			vJointValue.setOutlineThickness(/* vJointSizes.y */ 0.0075f);
+			vJointValue.setOutlineColor(fGetColor(1.0f, 0u));
+			vJointValue.setFillColor(fGetColor(1.0f, 1u));
+		}//nodes
+		return;
+	}
+
 public://actions
 
 	virtual void fAhead(tVec &vIputVec) override
@@ -179,6 +342,26 @@ public://actions
 		vOputVec = vOputVec.array() * vNodeVec.array();
 	}//fAback
 
+	virtual void
+	fDraw(sf::RenderWindow &vRender, const sf::Transform &vTform) override
+	{
+		for(size_t vI = 0; vI < vNodeVec.size(); vI++)
+		{
+			//joint
+			auto &vJointValue = vJointArray[vI];
+			auto	vJointColor = vNodeVec[vI];
+			vJointValue.setOutlineColor(fGetColor(vJointColor, 0));
+			vJointValue.setFillColor(fGetColor(vJointColor, 1));
+			vRender.draw(vJointValue, vTform);
+			//shape
+			auto &vShapeValue = vShapeArray[vI];
+			auto	vShapeColor = vNodeVec[vI];
+			vShapeValue.setOutlineColor(fGetColor(vShapeColor, 0));
+			vShapeValue.setFillColor(fGetColor(vShapeColor, 1));
+			vRender.draw(vShapeValue, vTform);
+		}
+	}//fDraw
+
 public://operats
 
 	virtual std::ostream &operator<<(std::ostream &vStream) const override
@@ -193,12 +376,34 @@ private://datadef
 
 	tVec vNodeVec;
 
+	tJointArray vJointArray;
+	tShapeArray vShapeArray;
+
+private://friends
+
+	friend class tMakerOfNetwork;
+
 };//tLayerOfNetworkActiv
+	/* type of layer of network activation linear
+	 * essentially it does not change anything
+	 * this is like not having activation function at all
+	 * in comparison with tanh it gives me terrible results
+	 * > even 1k times more iterations of learning did not make it right
+	 */
+using tLayerOfNetworkActivLine = tLayerOfNetworkActiv<
+	[](tNum vNum)
+	{
+		return vNum;
+	},
+	[](tNum vNum)
+	{
+		return 1.0;
+	}>;//tLayerOfNetworkActivLine
 /* type of layer of network activation sigmoid
  * this one actually sucks in comparison with hyperbolic tangent
  * > it needs 100 times more iterations to start solving xor
  */
-typedef tLayerOfNetworkActiv<
+using tLayerOfNetworkActivSigma = tLayerOfNetworkActiv<
 	[](tNum vNum)
 	{
 		return 1.0 / (1.0 + std::exp(-vNum));
@@ -210,10 +415,9 @@ typedef tLayerOfNetworkActiv<
 		tNum vSig = 1.0 / (1.0 + std::exp(-vNum));
 		return vSig * (1.0 - vSig);
 		//return (std::exp(-vNum)) / (1.0 + std::exp(-vNum));
-	}>
-	tLayerOfNetworkActivSigma;
+	}>;//tLayerOfNetworkActivSigma
 /* type of layer of network activation tangent hyperbolic */
-typedef tLayerOfNetworkActiv<
+using tLayerOfNetworkActivTanh = tLayerOfNetworkActiv<
 	[](tNum vNum)
 	{
 		return std::tanh(vNum);
@@ -221,10 +425,9 @@ typedef tLayerOfNetworkActiv<
 	[](tNum vNum)
 	{
 		return (1.0 - std::pow(std::tanh(vNum), 2.0));
-	}>
-	tLayerOfNetworkActivTanh;
+	}>;//tLayerOfNetworkActivTanh
 /* type of layer of network activation rectangular linear unit */
-typedef tLayerOfNetworkActiv<
+using tLayerOfNetworkActivRelu = tLayerOfNetworkActiv<
 	[](tNum vNum)
 	{
 		return vNum > 0.0 ? vNum : vNum * 0.1;
@@ -232,41 +435,44 @@ typedef tLayerOfNetworkActiv<
 	[](tNum vNum)
 	{
 		return vNum > 0.0 ? 1.0 : 0.1;
-	}>
-	tLayerOfNetworkActivRelu;
+	}>;//tLayerOfNetworkActivRelu
 /* type of graph of neural network */
-typedef class tGraphOfNetwork final
+class tGraphOfNetwork final
 {
 public://typedef
 
-	using tLayer = tLayerOfNetwork;
-	using tRefer = std::shared_ptr<tLayer>;
-	using tArray = std::vector<tRefer>;
+	using tLayerValue = tLayerOfNetwork;
+	using tLayerRefer = tRefer<tLayerValue>;
+	using tLayerArray = std::vector<tLayerRefer>;
 
 private://codetor
 
 	tGraphOfNetwork() = default;
 
-public://codetor
+private://actions
 
-	~tGraphOfNetwork() = default;
+	auto fPushLayer(tLayerRefer vLayerRefer)
+	{
+		vLayerArray.push_back(vLayerRefer);
+		return *this;
+	}
 
 public://actions
 
 	inline void fAhead(tVec &vIputVec)
 	{
-		for(size_t vIndex = 0; vIndex < vArray.size();)
+		for(size_t vIndex = 0; vIndex < vLayerArray.size();)
 		{
-			vArray[vIndex]->fAhead(vIputVec);
+			vLayerArray[vIndex]->fAhead(vIputVec);
 			vIndex++;
 		}
 	}//fAhead
 	inline void fAback(tVec &vOput)
 	{
-		for(size_t vIndex = vArray.size(); vIndex > 0;)
+		for(size_t vIndex = vLayerArray.size(); vIndex > 0;)
 		{
 			vIndex--;
-			vArray[vIndex]->fAback(vOput);
+			vLayerArray[vIndex]->fAback(vOput);
 		}
 	}//fAback
 	inline void fLearn(tVec &vIputVec, const tVec &vTrueVec)
@@ -277,14 +483,23 @@ public://actions
 		fAback(vCostVec);
 	}//fLearn
 
+	inline void fDraw(sf::RenderWindow &vWindow, sf::Transform &vTform)
+	{
+		for(size_t vIndex = 0; vIndex < vLayerArray.size(); vIndex++)
+		{
+			vTform.translate({0.1, 0.00});
+			vLayerArray[vIndex]->fDraw(vWindow, vTform);
+		}
+	}//fDraw
+
 public://operats
 
 	inline std::ostream &operator<<(std::ostream &vStream) const
 	{
-		for(size_t vIndex = 0; vIndex < vArray.size(); vIndex++)
+		for(size_t vIndex = 0; vIndex < vLayerArray.size(); vIndex++)
 		{
 			vStream << "[" << vIndex << "]=(" << std::endl;
-			vStream << *vArray[vIndex];
+			vStream << *vLayerArray[vIndex];
 			vStream << ")=[" << vIndex << "]" << std::endl;
 		}
 		return vStream;
@@ -292,29 +507,31 @@ public://operats
 
 private://datadef
 
-	tArray vArray;
+	tLayerArray vLayerArray;
 
 private://friends
 
-	typedef class tMakerOfNetwork tMakerOfNetwork;
-	friend tMakerOfNetwork;
+	friend class tMakerOfNetwork;
 
-} tGraphOfNetwork;
+};//tGraphOfNetwork
 inline std::ostream &
 operator<<(std::ostream &vStream, const tGraphOfNetwork &rGraph)
 {
 	return rGraph.operator<<(vStream);
 }//operator<<
-/* type of maker of network */
-typedef class tMakerOfNetwork final
+/* type of maker of network
+ * class responsible for the network construction and handling
+ */
+class tMakerOfNetwork final
 {
 public://typedef
 
-	using tGraph = tGraphOfNetwork;
+	using tGraphValue = tGraphOfNetwork;
+	using tGraphRefer = std::shared_ptr<tGraphValue>;
 
-public://actions
+public://codetor
 
-	tMakerOfNetwork(): pGraph{new tGraph()}
+	tMakerOfNetwork(): vGraphRefer{new tGraphValue()}
 	{
 	}
 
@@ -323,62 +540,21 @@ public://actions
 	template<typename tLayerT, typename... tArgT>
 	auto fMakeLayer(tArgT &&...rArgT)
 	{
-		auto vLayer = std::make_shared<tLayerT>(std::forward<tArgT>(rArgT)...);
-		this->pGraph->vArray.push_back(vLayer);
+		auto vLayer = tRefer<tLayerT>(new tLayerT(std::forward<tArgT>(rArgT)...));
+		vGraphRefer->fPushLayer(vLayer);
 		return *this;
-	}
+	}//fMakeLayer
 	auto fTakeGraph()
 	{
-		return this->pGraph;
-	}
+		return this->vGraphRefer;
+	}//fTakeGraph
 
 private://datadef
 
-	std::shared_ptr<tGraph> pGraph;
+	tGraphRefer vGraphRefer;
 
-} tMakerOfNetwork;
-//-//graphics
-using tDrawIter = std::shared_ptr<sf::Drawable>;
-using tDrawList = std::vector<tDrawIter>;
-//-//-//values
-using tShapeValue = std::shared_ptr<sf::CircleShape>;
-using tLabelValue = std::shared_ptr<sf::Text>;
-using tJointValue = std::shared_ptr<sf::RectangleShape>;
-//-//-//arrays
-using tJointArray = std::vector<tJointValue>;
-//-//-//layers
-using tShapeLayer = std::vector<tShapeValue>;
-using tLabelLayer = std::vector<tLabelValue>;
-using tJointLayer = std::vector<tJointArray>;
-//-//-//graphs
-using tShapeGraph = std::vector<tShapeLayer>;
-using tLabelGraph = std::vector<tLabelLayer>;
-using tJointGraph = std::vector<tJointLayer>;
-//getters
-sf::Color fGetColor(float vValue, bool vFill, bool vSign)
-{
-	typedef union tPixel
-	{
-		struct
-		{
-			sf::Uint8 vA, vB, vG, vR;
-		};
-		sf::Uint32 vF = 0x00'00'00'00;
-	} tPixel;
-	sf::Uint8 vColorBase = vSign ? ((vValue + 1.0) * 60.0) : (vValue * 120.0);
-	tPixel		vPixel;
-	vPixel.vR = vColorBase;
-	vPixel.vG = vColorBase;
-	vPixel.vB = vColorBase;
-	if(!vFill)
-	{
-		vPixel.vR = 0xff - vPixel.vR;
-		vPixel.vG = 0xff - vPixel.vG;
-		vPixel.vB = 0xff - vPixel.vB;
-	}
-	vPixel.vA = 0xff;
-	return sf::Color{vPixel.vF};
-}//fGetColor
+};//tMakerOfNetwork
+//actions
 template<typename tVal>
 tVal fRead(nFileSystem::ifstream &vFile)
 {
@@ -621,17 +797,17 @@ static const tCmdTab cCmdTab{
 	{"tMakerOfNetwork",
 	 []()
 	 {
-		 auto pGraphOfNetwork
+		 auto vGraphOfNetwork
 			 = tMakerOfNetwork()
 					 .fMakeLayer<tLayerOfNetworkDense>(0x40, 0x30)
-					 .fMakeLayer<tLayerOfNetworkActivSigma>()
+					 .fMakeLayer<tLayerOfNetworkActivSigma>(0x30)
 					 .fMakeLayer<tLayerOfNetworkDense>(0x30, 0x20)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(0x30)
 					 .fMakeLayer<tLayerOfNetworkDense>(0x20, 0x10)
-					 .fMakeLayer<tLayerOfNetworkActivRelu>()
+					 .fMakeLayer<tLayerOfNetworkActivRelu>(0x10)
 					 .fTakeGraph();
-		 std::clog << "[pGraphOfNetwork]=(" << std::endl;
-		 std::clog << *pGraphOfNetwork << ")" << std::endl;
+		 std::clog << "[vGraphOfNetwork]=(" << std::endl;
+		 std::clog << *vGraphOfNetwork << ")" << std::endl;
 	 }},
 	{"tMatrix",
 	 []()
@@ -655,16 +831,14 @@ static const tCmdTab cCmdTab{
 	{"tAiXorSolver",
 	 []()
 	 {
-		 auto pGraphOfNetwork
+		 auto vGraphOfNetwork
 			 = tMakerOfNetwork()
-					 .fMakeLayer<tLayerOfNetworkDense>(2, 4)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(4, 2)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
-					 .fMakeLayer<tLayerOfNetworkDense>(2, 1)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkDense>(2, 3)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(3)
+					 .fMakeLayer<tLayerOfNetworkDense>(3, 1)
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(1)
 					 .fTakeGraph();
-		 for(size_t vIndex = 1; vIndex <= 1'000; vIndex++)
+		 for(size_t vIndex = 1; vIndex <= 10'000; vIndex++)
 		 {
 			 auto vInputL = static_cast<bool>(vRandBool(vRandEngine));
 			 auto vInputR = static_cast<bool>(vRandBool(vRandEngine));
@@ -673,7 +847,7 @@ static const tCmdTab cCmdTab{
 			 vInputV[1]		= static_cast<tNum>(vInputR);
 			 auto vAnswer = tVec(1);
 			 vAnswer[0]		= static_cast<tNum>(vInputL ^ vInputR);
-			 pGraphOfNetwork->fLearn(vInputV, vAnswer);
+			 vGraphOfNetwork->fLearn(vInputV, vAnswer);
 		 }
 		 for(auto vIndex = 0b000; vIndex < 0b100; vIndex++)
 		 {
@@ -682,7 +856,7 @@ static const tCmdTab cCmdTab{
 			 auto vInputV = tVec(2);
 			 vInputV[0]		= static_cast<tNum>(vInputL);
 			 vInputV[1]		= static_cast<tNum>(vInputR);
-			 pGraphOfNetwork->fAhead(vInputV);
+			 vGraphOfNetwork->fAhead(vInputV);
 			 vInputV[0] = vInputV[0] > 0.5 ? 1.0 : 0.0;
 			 nTextFormat::println("[{:d}^{:d}]={}", vInputL, vInputR, vInputV[0]);
 		 }
@@ -693,14 +867,14 @@ static const tCmdTab cCmdTab{
 		 //timer
 		 auto vTimeSince = std::chrono::high_resolution_clock::now();
 		 //graph
-		 auto pGraphOfNetwork
+		 auto vGraphOfNetwork
 			 = tMakerOfNetwork()
 					 .fMakeLayer<tLayerOfNetworkDense>(28 * 28, 32)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(32)
 					 .fMakeLayer<tLayerOfNetworkDense>(32, 16)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(16)
 					 .fMakeLayer<tLayerOfNetworkDense>(16, 10)
-					 .fMakeLayer<tLayerOfNetworkActivTanh>()
+					 .fMakeLayer<tLayerOfNetworkActivTanh>(10)
 					 .fTakeGraph();
 		 try//learn
 		 {
@@ -746,8 +920,8 @@ static const tCmdTab cCmdTab{
 			 auto vError = tVec(vTruth.size());//cost from each invididual example
 			 auto vBatch = 10;								 //cost from a batch of examples
 			 //process
-			 for(size_t vIndex = 0;
-					 (vIndex < vLearnImageCount && vIndex < vLearnLabelCount)
+			 for(size_t vIndex = 1;
+					 (vIndex <= vLearnImageCount && vIndex <= vLearnLabelCount)
 					 && (!vLearnImageFile.eof() && !vLearnLabelFile.eof());
 					 vIndex++)
 			 {
@@ -765,17 +939,17 @@ static const tCmdTab cCmdTab{
 				 auto vDigit		= fRead<uint8_t>(vLearnLabelFile);
 				 vTruth[vDigit] = 1.0;
 #if 0
-				 pGraphOfNetwork->fAhead(vInput);
+				 vGraphOfNetwork->fAhead(vInput);
 				 vError
 					 = vError + (vInput - vTruth) * 2.0 / static_cast<tNum>(vTruth.size());
 				 if(vIndex % vBatch == 0)
 				 {
 					 vError = vError / static_cast<tNum>(vBatch);
-					 pGraphOfNetwork->fAback(vError);
+					 vGraphOfNetwork->fAback(vError);
 					 vError = tVec(vTruth.size());
 				 }
 #else
-				 pGraphOfNetwork->fLearn(vInput, vTruth);
+				 vGraphOfNetwork->fLearn(vInput, vTruth);
 #endif
 				 auto vShowIndex = 10'000;
 				 if(vIndex % vShowIndex == 0)
@@ -834,8 +1008,8 @@ static const tCmdTab cCmdTab{
 			 auto vTrialLabelCount = fRead<int32_t>(vTrialLabelFile);
 			 nTextFormat::println(stdout, "[TrialLabelCount]={}", vTrialLabelCount);
 			 //process
-			 for(size_t vIndex = 0;
-					 (vIndex < vTrialImageCount && vIndex < vTrialLabelCount)
+			 for(size_t vIndex = 1;
+					 (vIndex <= vTrialImageCount && vIndex <= vTrialLabelCount)
 					 && (!vTrialImageFile.eof() && !vTrialLabelFile.eof());
 					 vIndex++)
 			 {
@@ -852,7 +1026,7 @@ static const tCmdTab cCmdTab{
 				 auto vLabel		= fRead<uint8_t>(vTrialLabelFile);
 				 auto vTruth		= tVec(10);
 				 vTruth[vLabel] = 1.0;
-				 pGraphOfNetwork->fAhead(vInput);
+				 vGraphOfNetwork->fLearn(vInput, vTruth);
 				 if(vIndex % 1'000 == 0)
 				 {
 					 auto vTruthIndex = std::max_element(vTruth.begin(), vTruth.end());
@@ -878,10 +1052,6 @@ static const tCmdTab cCmdTab{
 		 );
 	 }}, //tAiDigitReader
 };
-//actions
-void fDraw(sf::RenderWindow &rWindow, const tDrawList &rDrawList)
-{
-}//fDraw
 int fMain()
 {
 	//filesystem
@@ -904,34 +1074,29 @@ int fMain()
 	const sf::ContextSettings vGfxSetup;
 	sf::RenderWindow					vWindow(vVideoMode, "ArInPlay", cStyle, vGfxSetup);
 	sf::Vector2f							vWindowSizeFull = {
-		 static_cast<float>(vWindow.getSize().x),
-		 static_cast<float>(vWindow.getSize().y),
+		 static_cast<tNum>(vWindow.getSize().x),
+		 static_cast<tNum>(vWindow.getSize().y),
 	 };
 	sf::Vector2f vWindowSizeHalf;
-	vWindowSizeHalf.x = static_cast<float>(vWindowSizeFull.x) / 2.0;
-	vWindowSizeHalf.y = static_cast<float>(vWindowSizeFull.y) / 2.0;
-	//visual
-	tDrawList vDrawList;
-	auto			pFont = std::make_shared<sf::Font>();
-	fThrowIfNot(
-		pFont->loadFromFile(dPathToResource "/kongtext.ttf"),
-		std::runtime_error("failed font loading")
-	);
+	vWindowSizeHalf.x = static_cast<tNum>(vWindowSizeFull.x) / 2.0;
+	vWindowSizeHalf.y = static_cast<tNum>(vWindowSizeFull.y) / 2.0;
 	//timing
 	sf::Clock vClock;
 	sf::Time	vTimePNow = vClock.getElapsedTime();
 	sf::Time	vTimePWas = vTimePNow;
-	float			vTimeFNow = vTimePWas.asSeconds();
-	float			vTimeFWas = vTimeFNow;
+	tNum			vTimeFNow = vTimePWas.asSeconds();
+	tNum			vTimeFWas = vTimeFNow;
 	unsigned	vTimeIWas = static_cast<unsigned>(vTimeFWas);
 	unsigned	vTimeINow = static_cast<unsigned>(vTimeFNow);
 	//intel
-	auto pGraphOfNetwork
+	auto vGraphOfNetwork
 		= tMakerOfNetwork()
-				.fMakeLayer<tLayerOfNetworkDense>(2, 3)
-				.fMakeLayer<tLayerOfNetworkActivTanh>()
-				.fMakeLayer<tLayerOfNetworkDense>(3, 1)
-				.fMakeLayer<tLayerOfNetworkActivTanh>()
+				.fMakeLayer<tLayerOfNetworkDense>(2, 4)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(4)
+				.fMakeLayer<tLayerOfNetworkDense>(4, 2)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(2)
+				.fMakeLayer<tLayerOfNetworkDense>(2, 1)
+				.fMakeLayer<tLayerOfNetworkActivTanh>(1)
 				.fTakeGraph();
 	//mainloop
 	while(vWindow.isOpen())
@@ -953,7 +1118,15 @@ int fMain()
 			vInputV[1]	 = static_cast<tNum>(vInputR);
 			auto vAnswer = tVec(1);
 			vAnswer[0]	 = static_cast<tNum>(vInputL ^ vInputR);
-			pGraphOfNetwork->fLearn(vInputV, vAnswer);
+			vGraphOfNetwork->fLearn(vInputV, vAnswer);
+			sf::Transform vScale{sf::Transform::Identity};
+			vScale.scale(sf::Vector2f{
+				static_cast<tNum>(vWindow.getSize().x),
+				static_cast<tNum>(vWindow.getSize().y),
+			});
+			vWindow.clear();
+			vGraphOfNetwork->fDraw(vWindow, vScale);
+			vWindow.display();
 		}//intel
 		sf::Event vWindowEvent;
 		vWindow.pollEvent(vWindowEvent);
@@ -966,12 +1139,6 @@ int fMain()
 		}
 		default: break;
 		}
-		vWindow.clear();
-		for(tDrawIter vDrawIter: vDrawList)
-		{
-			vWindow.draw(*vDrawIter);
-		}
-		vWindow.display();
 	}//mainloop
 	return EXIT_SUCCESS;
 }//fMain
